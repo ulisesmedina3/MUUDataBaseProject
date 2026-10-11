@@ -2,9 +2,9 @@ import os
 
 import psycopg2
 
-def connect_to_local_database():
+def connect_to_database():
     connection = psycopg2.connect(
-        host="localhost",
+        host="dpg-db4o9b942hec73ecq3t0-a.oregon-postgres.render.com",
         port=5432,
         dbname="muu_me05",
         user="muu_me05_user",
