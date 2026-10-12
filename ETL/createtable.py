@@ -149,15 +149,15 @@ def create_tables(connection):
     cursor.close()
 
 
-def main():
-    connection = connect_to_local_database()
+# def main():
+#     connection = connect_to_database()
 
-    try:
-        create_tables(connection)
-        print("Tables created successfully!")
-    finally:
-        connection.close()
+#     try:
+#         create_tables(connection)
+#         print("Tables created successfully!")
+#     finally:
+#         connection.close()
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
