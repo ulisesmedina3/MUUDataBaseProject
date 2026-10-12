@@ -3,14 +3,22 @@ import os
 import psycopg2
 
 def connect_to_database():
-    connection = psycopg2.connect(
-        host="dpg-db4o9b942hec73ecq3t0-a.oregon-postgres.render.com",
-        port=5432,
-        dbname="muu_me05",
-        user="muu_me05_user",
-        password="PwFwz9ljZllk4Bs4s9c7WzbTaU3RDyz2"
+    required_variables = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
+    missing_variables = [
+        variable for variable in required_variables if not os.environ.get(variable)
+    ]
+    if missing_variables:
+        variables = ", ".join(missing_variables)
+        raise RuntimeError(f"Missing required database environment variables: {variables}")
+
+    return psycopg2.connect(
+        host=os.environ["PGHOST"],
+        port=int(os.environ["PGPORT"]),
+        dbname=os.environ["PGDATABASE"],
+        user=os.environ["PGUSER"],
+        password=os.environ["PGPASSWORD"],
+        sslmode=os.environ.get("PGSSLMODE", "require"),
     )
-    return connection
 
 
 def create_tables(connection):
@@ -149,15 +157,15 @@ def create_tables(connection):
     cursor.close()
 
 
-def main():
-    connection = connect_to_local_database()
+# def main():
+#     connection = connect_to_database()
 
-    try:
-        create_tables(connection)
-        print("Tables created successfully!")
-    finally:
-        connection.close()
+#     try:
+#         create_tables(connection)
+#         print("Tables created successfully!")
+#     finally:
+#         connection.close()
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
