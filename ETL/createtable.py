@@ -23,7 +23,9 @@ def connect_to_database():
 
 def create_tables(connection):
     cursor = connection.cursor()
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+    cursor.execute("CREATE SCHEMA IF NOT EXISTS public;")
+    cursor.execute("SET search_path TO public;")
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;")
 
         # 1. Vehicle kind
     cursor.execute("""
