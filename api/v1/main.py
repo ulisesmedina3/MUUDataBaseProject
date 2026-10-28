@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask
+from flask import Flask, jsonify
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
@@ -26,6 +26,23 @@ def create_app() -> Flask:
         return pool.getconn()
 
     app = Flask(__name__)
+
+    @app.get("/")
+    def api_info():
+        return jsonify(
+            {
+                "message": "MUU Vehicle API is running",
+                "endpoints": {
+                    "vehicles": "/api/v1/vehicles",
+                    "health": "/health",
+                },
+            }
+        )
+
+    @app.get("/health")
+    def health_check():
+        return jsonify({"status": "ok"})
+
     app.register_blueprint(
         create_vehicle_handler(get_connection, pool.putconn)
     )

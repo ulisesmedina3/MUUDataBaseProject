@@ -91,6 +91,10 @@ install from `requirements.txt`, and use this Start Command:
 gunicorn --bind 0.0.0.0:$PORT "api.v1.main:create_app()"
 ```
 
+After deployment, opening the service URL (`/`) returns the API status.
+Use `/health` for a simple health check and `/api/v1/vehicles` for the
+vehicle endpoint. Do not append `localhost` to the Render URL.
+
 Create a vehicle with `POST /api/v1/vehicles`:
 
 ```json
