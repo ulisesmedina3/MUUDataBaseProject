@@ -71,3 +71,29 @@ py ETL/main.py
 What this script does automatically:
 - Runs [sql/createtables.sql](sql/createtables.sql) (includes `CREATE EXTENSION IF NOT EXISTS postgis`)
 - Inserts parquet data in dependency order
+
+## Vehicle API
+
+Install the requirements and start the API from the project root:
+
+```bash
+py -m api.v1.main
+```
+
+Create a vehicle with `POST /api/v1/vehicles`:
+
+```json
+{
+  "vehicle_type_id": 3,
+  "vehicle_status_id": 1,
+  "plate_number": "ABC-123",
+  "make": "Toyota",
+  "model": "Hilux",
+  "year": 2024
+}
+```
+
+The endpoint returns `201 Created` with the generated `vehicle_id`, `400 Bad
+Request` for malformed or invalid input, `404 Not Found` when a referenced
+vehicle type or status does not exist, and `409 Conflict` when the plate number
+already exists. `make` and `model` are optional text fields.
