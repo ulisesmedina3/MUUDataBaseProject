@@ -74,10 +74,21 @@ What this script does automatically:
 
 ## Vehicle API
 
-Install the requirements and start the API from the project root:
+Install the requirements and start the API locally from the project root:
 
 ```bash
-py -m api.v1.main
+.\.venv\Scripts\python.exe -m api.v1.main
+```
+
+The local server listens on `http://localhost:5000`. Configure `PGHOST`,
+`PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and optionally `PGSSLMODE`
+before starting it.
+
+For Render, set those database variables in the service's Environment tab,
+install from `requirements.txt`, and use this Start Command:
+
+```bash
+gunicorn --bind 0.0.0.0:$PORT "api.v1.main:create_app()"
 ```
 
 Create a vehicle with `POST /api/v1/vehicles`:

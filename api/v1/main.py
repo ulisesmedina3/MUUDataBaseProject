@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from flask import Flask
 from psycopg2.pool import ThreadedConnectionPool
 
@@ -32,4 +34,7 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
-    create_app().run()
+    create_app().run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+    )
