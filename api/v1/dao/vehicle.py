@@ -24,6 +24,80 @@ def ensure_vehicle_constraints(connection: Any) -> None:
     connection.commit()
 
 
+def get_vehicles(
+    connection: Any,
+    limit: int,
+    offset: int,
+    status: str | None,
+    plate_number: str | None,
+) -> tuple[list[dict[str, Any]], int]:
+    filters: list[str] = []
+    parameters: list[Any] = []
+
+    if status is not None:
+        try:
+            status_id = int(status)
+        except ValueError:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM vehicle_status AS status
+                    WHERE status.vehicle_status_id = vehicle.vehicle_status_id
+                      AND status.name ILIKE %s
+                )
+                """
+            )
+            parameters.append(status)
+        else:
+            filters.append("vehicle.vehicle_status_id = %s")
+            parameters.append(status_id)
+
+    if plate_number is not None:
+        filters.append("vehicle.plate_number ILIKE %s")
+        parameters.append(f"%{plate_number}%")
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM vehicle
+            {where_clause}
+            """,
+            parameters,
+        )
+        count = cursor.fetchone()[0]
+
+        cursor.execute(
+            f"""
+            SELECT vehicle_id, plate_number, make, model, year,
+                   vehicle_type_id, vehicle_status_id, created_at
+            FROM vehicle
+            {where_clause}
+            ORDER BY vehicle_id
+            LIMIT %s OFFSET %s
+            """,
+            [*parameters, limit, offset],
+        )
+        rows = cursor.fetchall()
+
+    vehicles = [
+        {
+            "vehicle_id": row[0],
+            "plate_number": row[1],
+            "make": row[2],
+            "model": row[3],
+            "year": row[4],
+            "vehicle_type_id": row[5],
+            "vehicle_status_id": row[6],
+            "created_at": row[7].isoformat(),
+        }
+        for row in rows
+    ]
+    return vehicles, count
+
+
 def create_vehicle(
     connection: Any,
     vehicle_type_id: int,

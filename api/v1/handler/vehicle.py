@@ -8,6 +8,7 @@ from api.v1.dao.vehicle import (
     DuplicatePlateError,
     VehicleReferenceNotFoundError,
     create_vehicle,
+    get_vehicles,
 )
 
 
@@ -20,6 +21,41 @@ def create_vehicle_handler(
     connection_releaser: Callable[[Any], None],
 ):
     blueprint = Blueprint("vehicles", __name__)
+
+    @blueprint.get("/api/v1/vehicles")
+    def get_vehicles_route():
+        limit_value = request.args.get("limit", "20")
+        offset_value = request.args.get("offset", "0")
+
+        try:
+            limit = int(limit_value)
+            offset = int(offset_value)
+        except ValueError:
+            return jsonify({"error": "limit and offset must be integers"}), 400
+
+        if limit < 0 or offset < 0:
+            return jsonify({"error": "limit and offset must be non-negative"}), 400
+
+        connection = connection_factory()
+        try:
+            vehicles, count = get_vehicles(
+                connection,
+                limit,
+                offset,
+                request.args.get("status"),
+                request.args.get("plate_number"),
+            )
+        finally:
+            connection_releaser(connection)
+
+        return jsonify(
+            {
+                "items": vehicles,
+                "limit": limit,
+                "offset": offset,
+                "count": count,
+            }
+        )
 
     @blueprint.post("/api/v1/vehicles")
     def create_vehicle_route():
