@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Annotated, Any
 
-from flask import Blueprint, jsonify, request
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.dao.vehicle import (
     DuplicatePlateError,
@@ -12,114 +14,78 @@ from api.v1.dao.vehicle import (
 )
 
 
-def _is_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+class VehicleCreate(BaseModel):
+    vehicle_type_id: int
+    vehicle_status_id: int
+    plate_number: str = Field(min_length=1)
+    make: str | None = None
+    model: str | None = None
+    year: int = Field(ge=1950, le=2100)
 
 
-def create_vehicle_handler(
-    connection_factory: Callable[[], Any],
-    connection_releaser: Callable[[Any], None],
+router = APIRouter(prefix="/api/v1/vehicles", tags=["vehicles"])
+
+
+def _get_connection(request: Request) -> tuple[ThreadedConnectionPool, Any]:
+    pool: ThreadedConnectionPool | None = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database connection unavailable")
+    return pool, pool.getconn()
+
+
+@router.get("")
+def get_vehicles_route(
+    request: Request,
+    limit: Annotated[int, Query(ge=0)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    status: str | None = None,
+    plate_number: str | None = None,
 ):
-    blueprint = Blueprint("vehicles", __name__)
-
-    @blueprint.get("/api/v1/vehicles")
-    def get_vehicles_route():
-        limit_value = request.args.get("limit", "20")
-        offset_value = request.args.get("offset", "0")
-
-        try:
-            limit = int(limit_value)
-            offset = int(offset_value)
-        except ValueError:
-            return jsonify({"error": "limit and offset must be integers"}), 400
-
-        if limit < 0 or offset < 0:
-            return jsonify({"error": "limit and offset must be non-negative"}), 400
-
-        connection = connection_factory()
-        try:
-            vehicles, count = get_vehicles(
-                connection,
-                limit,
-                offset,
-                request.args.get("status"),
-                request.args.get("plate_number"),
-            )
-        finally:
-            connection_releaser(connection)
-
-        return jsonify(
-            {
-                "items": vehicles,
-                "limit": limit,
-                "offset": offset,
-                "count": count,
-            }
+    pool, connection = _get_connection(request)
+    try:
+        items, count = get_vehicles(
+            connection,
+            limit,
+            offset,
+            status,
+            plate_number,
         )
+    finally:
+        pool.putconn(connection)
 
-    @blueprint.post("/api/v1/vehicles")
-    def create_vehicle_route():
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict):
-            return jsonify({"error": "request body must be a JSON object"}), 400
+    return {
+        "items": items,
+        "limit": limit,
+        "offset": offset,
+        "count": count,
+    }
 
-        required_ids = ("vehicle_type_id", "vehicle_status_id")
-        if any(not _is_int(payload.get(field)) for field in required_ids):
-            return (
-                jsonify(
-                    {
-                        "error": (
-                            "vehicle_type_id and vehicle_status_id are required "
-                            "integers"
-                        )
-                    }
-                ),
-                400,
-            )
 
-        plate_number = payload.get("plate_number")
-        if not isinstance(plate_number, str) or not plate_number.strip():
-            return jsonify({"error": "plate_number must be a non-empty string"}), 400
-
-        year = payload.get("year")
-        if not _is_int(year) or not 1950 <= year <= 2100:
-            return jsonify({"error": "year must be between 1950 and 2100"}), 400
-
-        optional_values: dict[str, str | None] = {}
-        for field in ("make", "model"):
-            value = payload.get(field)
-            if value is not None and not isinstance(value, str):
-                return jsonify({"error": f"{field} must be a string"}), 400
-            optional_values[field] = value.strip() if value is not None else None
-
-        connection = connection_factory()
+@router.post("", status_code=201)
+def create_vehicle_route(payload: VehicleCreate, request: Request):
+    pool, connection = _get_connection(request)
+    try:
         try:
             vehicle = create_vehicle(
                 connection,
-                payload["vehicle_type_id"],
-                payload["vehicle_status_id"],
-                plate_number.strip(),
-                optional_values["make"],
-                optional_values["model"],
-                year,
+                payload.vehicle_type_id,
+                payload.vehicle_status_id,
+                payload.plate_number.strip(),
+                payload.make.strip() if payload.make is not None else None,
+                payload.model.strip() if payload.model is not None else None,
+                payload.year,
             )
-        except VehicleReferenceNotFoundError:
-            return (
-                jsonify(
-                    {
-                        "error": (
-                            "vehicle_type_id or vehicle_status_id does not exist"
-                        )
-                    }
-                ),
-                404,
-            )
-        except DuplicatePlateError:
-            return jsonify({"error": "plate_number already exists"}), 409
-        finally:
-            connection_releaser(connection)
+        except VehicleReferenceNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="vehicle_type_id or vehicle_status_id does not exist",
+            ) from exc
+        except DuplicatePlateError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="plate_number already exists",
+            ) from exc
+    finally:
+        pool.putconn(connection)
 
-        vehicle["created_at"] = vehicle["created_at"].isoformat()
-        return jsonify(vehicle), 201
-
-    return blueprint
+    return vehicle

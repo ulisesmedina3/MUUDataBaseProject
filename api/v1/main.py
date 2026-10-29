@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
-from flask import Flask, jsonify
+import uvicorn
+from fastapi import FastAPI
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 from api.v1.dao.vehicle import ensure_vehicle_constraints
-from api.v1.handler.vehicle import create_vehicle_handler
+from api.v1.handler.vehicle import router as vehicle_router
 
 
-def create_app() -> Flask:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     pool = ThreadedConnectionPool(
         POOL_CONFIG["minconn"],
         POOL_CONFIG["maxconn"],
@@ -22,36 +25,43 @@ def create_app() -> Flask:
     finally:
         pool.putconn(connection)
 
-    def get_connection():
-        return pool.getconn()
+    app.state.pool = pool
+    try:
+        yield
+    finally:
+        pool.closeall()
 
-    app = Flask(__name__)
 
-    @app.get("/")
-    def api_info():
-        return jsonify(
-            {
-                "message": "MUU Vehicle API is running",
-                "endpoints": {
-                    "vehicles": "/api/v1/vehicles",
-                    "health": "/health",
-                },
-            }
-        )
+app = FastAPI(
+    title="MUU Vehicle API",
+    description="Vehicle tracking API",
+    lifespan=lifespan,
+)
 
-    @app.get("/health")
-    def health_check():
-        return jsonify({"status": "ok"})
 
-    app.register_blueprint(
-        create_vehicle_handler(get_connection, pool.putconn)
-    )
+@app.get("/")
+def api_info():
+    return {
+        "message": "MUU Vehicle API is running",
+        "endpoints": {
+            "vehicles": "/api/v1/vehicles",
+            "health": "/health",
+        },
+    }
 
-    return app
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
+app.include_router(vehicle_router)
 
 
 if __name__ == "__main__":
-    create_app().run(
+    uvicorn.run(
+        "api.v1.main:app",
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "5000")),
+        reload=False,
     )

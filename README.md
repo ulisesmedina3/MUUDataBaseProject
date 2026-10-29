@@ -16,9 +16,9 @@ Spring 2026
 
 | Full Name                | Email                                                           |
 | ------------------------ | --------------------------------------------------------------- |
-| Michael Martinez Curbelo | [michael.martinez21@upr.edu](mailto:michael.martinez21@upr.edu) |
-| Ulises L. Medina Hurtado | [ulises.medina3@upr.edu](ulises.medina3@upr.edu)                |
-| Uziel J. López Cruz      | [uziel.lopez@upr.edu](mailto:uziel.lopez@upr.edu)               |
+| Michael Martinez Curbelo | [michael.martinez21@upr.edu](mailto:michael.martinez21@upr.edu) |vehicle, trip
+| Ulises L. Medina Hurtado | [ulises.medina3@upr.edu](ulises.medina3@upr.edu)                |road-segment, location-ping
+| Uziel J. López Cruz      | [uziel.lopez@upr.edu](mailto:uziel.lopez@upr.edu)               |parking-area, driver
       
 
 ## Project Overview
@@ -80,7 +80,8 @@ Install the requirements and start the API locally from the project root:
 .\.venv\Scripts\python.exe -m api.v1.main
 ```
 
-The local server listens on `http://localhost:5000`. Configure `PGHOST`,
+The local FastAPI server listens on `http://localhost:5000`. Interactive API
+documentation is available at `http://localhost:5000/docs`. Configure `PGHOST`,
 `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and optionally `PGSSLMODE`
 before starting it.
 
@@ -88,7 +89,7 @@ For Render, set those database variables in the service's Environment tab,
 install from `requirements.txt`, and use this Start Command:
 
 ```bash
-gunicorn --bind 0.0.0.0:$PORT "api.v1.main:create_app()"
+gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT api.v1.main:app
 ```
 
 After deployment, opening the service URL (`/`) returns the API status.

@@ -1,5 +1,6 @@
 psycopg2-binary
-Flask
+fastapi
+uvicorn
 gunicorn
 pandas
 pyarrow
