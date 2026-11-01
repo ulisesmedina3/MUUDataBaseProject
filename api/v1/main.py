@@ -10,6 +10,7 @@ from psycopg2.pool import ThreadedConnectionPool
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 from api.v1.dao.vehicle import ensure_vehicle_constraints
 from api.v1.handler.vehicle import router as vehicle_router
+from api.v1.handler.road_segment import router as road_segment_router
 
 
 @asynccontextmanager
@@ -56,6 +57,7 @@ def health_check():
 
 
 app.include_router(vehicle_router)
+app.include_router(road_segment_router)
 
 
 if __name__ == "__main__":
