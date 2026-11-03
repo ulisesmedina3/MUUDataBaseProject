@@ -3,7 +3,8 @@ from __future__ import annotations
 import math
 
 from typing import Annotated, Any
-
+import json
+from pydantic import ValidationError
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from psycopg2.pool import ThreadedConnectionPool
@@ -13,6 +14,9 @@ from api.v1.dao.road_segment import (
     RoadReferenceNotFoundError,
     create_road_segment,
     get_road_segment,
+    get_road_segment_by_id,
+    update_road_segment,
+    delete_road_segment
 )
 
 
@@ -37,6 +41,36 @@ class Road_Segment_Create(BaseModel):
         if value not in ("both", "forward"):
             raise ValueError("Direction must be 'both' or 'forward'")
         return value
+
+
+class Road_Segment_Update(BaseModel):
+    name: str | None = None
+    speed_limit_kph: int | None = Field(default=None, ge=0)
+    is_oneway: bool | None = None
+    direction: str | None = None
+    geom: dict[str, Any] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str:
+        if value is None or not value.strip():
+            raise ValueError("Name cannot be empty")
+        return value.strip()
+
+    @field_validator("direction")
+    @classmethod
+    def validate_direction(cls, value: str | None) -> str:
+        if value not in ("both", "forward"):
+            raise ValueError("Invalid direction")
+        return value
+
+    @field_validator("is_oneway", "geom")
+    @classmethod
+    def validate_not_none(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
+
 
 router = APIRouter(prefix="/api/v1/road-segments", tags=["road-segment"])
 
@@ -89,6 +123,17 @@ def get_road_segment_route(
     max_speed_kph: int | None = None,
     bbox: str | None = None,
 ):
+
+    if (
+        min_speed_kph is not None
+        and max_speed_kph is not None
+        and min_speed_kph > max_speed_kph
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid speed range"
+        )
+    
     pool, connection = _get_connection(request)
     try:
         bbox_values = parse_bbox(bbox)
@@ -113,9 +158,48 @@ def get_road_segment_route(
     }
 
 
-@router.post("", status_code=201)
-def create_road_segment_route(payload: Road_Segment_Create, request: Request):
+@router.get("/{road_id}")
+def get_road_segment_by_id_route(
+    request: Request,
+    road_id: int,
+):
+    if road_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="road_id must be a positive integer"
+        )
+
     pool, connection = _get_connection(request)
+
+    try:
+        road = get_road_segment_by_id(connection, road_id)
+
+    except RoadReferenceNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Road segment does not exist"
+        )
+
+    finally:
+        pool.putconn(connection)
+
+    return road
+
+@router.post("", status_code=201)
+async def create_road_segment_route(request: Request):
+
+    try:
+        data = await request.json()
+        payload = Road_Segment_Create.model_validate(data)
+
+    except (json.JSONDecodeError, ValidationError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Malformed geometry or invalid JSON",
+        ) from exc
+
+    pool, connection = _get_connection(request)
+
     try:
         try:
             road_segment = create_road_segment(
@@ -126,17 +210,104 @@ def create_road_segment_route(payload: Road_Segment_Create, request: Request):
                 payload.direction,
                 payload.geom,
             )
-        except RoadReferenceNotFoundError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail="road_id does not exist",
-            ) from exc
+
         except InvalidRoadGeometryError as exc:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid geometry already exists",
+                detail="Malformed geometry or invalid JSON",
             ) from exc
+
     finally:
         pool.putconn(connection)
 
     return road_segment
+
+
+@router.put("/{road_id}")
+async def update_road_segment_route(
+    request: Request,
+    road_id: int,
+):
+    if road_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="road_id must be a positive integer"
+        )
+
+    try:
+        data = await request.json()
+        road = Road_Segment_Update.model_validate(data)
+
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Malformed JSON or invalid update payload"
+        ) from exc
+
+    data = road.model_dump(exclude_unset=True)
+
+    if not data:
+        raise HTTPException(
+            status_code=400,
+            detail="Empty patch payload"
+        )
+
+    pool, connection = _get_connection(request)
+
+    try:
+        result = update_road_segment(
+            connection,
+            road_id,
+            data,
+        )
+
+    except RoadReferenceNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Road segment does not exist"
+        )
+
+    except InvalidRoadGeometryError:
+        raise HTTPException(
+            status_code=400,
+            detail="Malformed geometry or invalid JSON"
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        ) from exc
+
+    finally:
+        pool.putconn(connection)
+
+    return result
+
+    
+@router.delete("/{road_id}/remove")
+def delete_road_segment_route(
+    request: Request,
+    road_id: int,
+):
+    if road_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="road_id must be a positive integer"
+        )
+
+    pool, connection = _get_connection(request)
+
+    try:
+        result = delete_road_segment(connection, road_id)
+
+    except RoadReferenceNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Road segment does not exist"
+        )
+
+    finally:
+        pool.putconn(connection)
+
+    return result

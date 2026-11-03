@@ -88,6 +88,131 @@ def get_road_segment(
     ]
     return road_segment, count
 
+def get_road_segment_by_id(
+    connection: Any,
+    road_id: int,
+) -> dict[str, Any]:
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT road_id, name, speed_limit_kph,
+                   ST_AsGeoJSON(geom), created_at
+            FROM road_segment
+            WHERE road_id = %s
+            """,
+            (road_id,),
+        )
+        row = cursor.fetchone()
+
+    if row is None:
+        raise RoadReferenceNotFoundError(
+            "Road segment does not exist"
+        )
+
+    return {
+        "road_id": row[0],
+        "name": row[1],
+        "speed_limit_kph": row[2],
+        "geom": json.loads(row[3]),
+        "created_at": row[4].isoformat(),
+    }
+
+def update_road_segment(
+    connection: Any,
+    road_id: int,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+
+    if not data:
+        raise ValueError("Empty patch payload")
+
+    fields = {
+        "name": "name = %s",
+        "speed_limit_kph": "speed_limit_kph = %s",
+        "is_oneway": "is_oneway = %s",
+        "direction": "direction = %s",
+        "geom": "geom = ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326)",
+    }
+
+    updates = []
+    parameters = []
+
+    for field, value in data.items():
+        if field not in fields:
+            raise ValueError("Invalid update field")
+
+        updates.append(fields[field])
+
+        if field == "geom":
+            if not isinstance(value, dict) or value.get("type") != "LineString":
+                raise InvalidRoadGeometryError("Invalid road geometry")
+            parameters.append(json.dumps(value))
+        else:
+            parameters.append(value)
+
+    parameters.append(road_id)
+
+    try:
+        with connection:
+            with connection.cursor() as cursor:
+
+                if "geom" in data:
+                    cursor.execute(
+                        """
+                        SELECT
+                            ST_IsValid(g)
+                            AND NOT ST_IsEmpty(g)
+                            AND ST_GeometryType(g) = 'ST_LineString'
+                        FROM (
+                            SELECT ST_SetSRID(
+                                ST_GeomFromGeoJSON(%s), 4326
+                            ) AS g
+                        ) AS geometry_check
+                        """,
+                        (json.dumps(data["geom"]),),
+                    )
+
+                    if cursor.fetchone()[0] is not True:
+                        raise InvalidRoadGeometryError(
+                            "Invalid road geometry"
+                        )
+
+                cursor.execute(
+                    f"""
+                    UPDATE road_segment
+                    SET {", ".join(updates)}
+                    WHERE road_id = %s
+                    RETURNING road_id, name, speed_limit_kph,
+                              ST_AsGeoJSON(geom), created_at
+                    """,
+                    parameters,
+                )
+
+                row = cursor.fetchone()
+
+                if row is None:
+                    raise RoadReferenceNotFoundError(
+                        "Road segment does not exist"
+                    )
+
+    except (
+        psycopg2.errors.InvalidParameterValue,
+        psycopg2.errors.InvalidTextRepresentation,
+    ) as exc:
+        raise InvalidRoadGeometryError(
+            "Invalid road geometry"
+        ) from exc
+
+    return {
+        "road_id": row[0],
+        "name": row[1],
+        "speed_limit_kph": row[2],
+        "geom": json.loads(row[3]),
+        "created_at": row[4].isoformat(),
+    }
+
+
 
 def create_road_segment(
     connection: Any,
@@ -153,4 +278,32 @@ def create_road_segment(
         "direction": row[4],
         "geom": json.loads(row[5]),
         "created_at": row[6].isoformat(),
+    }
+
+def delete_road_segment(
+    connection: Any,
+    road_id: int,
+) -> dict[str, Any]:
+
+    with connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM road_segment
+                WHERE road_id = %s
+                RETURNING road_id
+                """,
+                (road_id,),
+            )
+
+            row = cursor.fetchone()
+
+            if row is None:
+                raise RoadReferenceNotFoundError(
+                    "Road segment does not exist"
+                )
+
+    return {
+        "message": "Road segment deleted successfully.",
+        "road_id": row[0],
     }
