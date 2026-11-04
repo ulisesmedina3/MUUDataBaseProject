@@ -285,7 +285,7 @@ async def update_road_segment_route(
     return result
 
     
-@router.delete("/{road_id}/remove")
+@router.delete("/{road_id}")
 def delete_road_segment_route(
     request: Request,
     road_id: int,
