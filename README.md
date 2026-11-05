@@ -16,7 +16,7 @@ Spring 2026
 
 | Full Name                | Email                                                           |
 | ------------------------ | --------------------------------------------------------------- |
-| Michael Martinez Curbelo | [michael.martinez21@upr.edu](mailto:michael.martinez21@upr.edu) |vehicle, trip
+| Michael Martinez Curbelo | [michael.martinez21@upr.edu](mailto:michael.martinez21@upr.edu) |vehicle, trip, road_assigment
 | Ulises L. Medina Hurtado | [ulises.medina3@upr.edu](ulises.medina3@upr.edu)                |road-segment, location-ping
 | Uziel J. López Cruz      | [uziel.lopez@upr.edu](mailto:uziel.lopez@upr.edu)               |parking-area, driver
       
