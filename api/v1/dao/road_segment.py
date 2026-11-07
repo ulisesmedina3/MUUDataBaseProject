@@ -4,14 +4,14 @@ from typing import Any
 
 import json
 import psycopg2
-
+from fastapi.responses import JSONResponse
 
 class InvalidRoadGeometryError(Exception):
     """Raised when the road geometry is invalid."""
 
 
 class RoadReferenceNotFoundError(Exception):
-    """Raised when a road segment does not exist."""
+    """Raised when a road id does not exist."""
 
 def get_road_segment(
     connection: Any,
@@ -88,6 +88,100 @@ def get_road_segment(
     ]
     return road_segment, count
 
+
+def get_road_segment_geojson(
+    connection: Any,
+    limit: int,
+    offset: int,
+    name: str | None = None,
+    min_speed_kph: int | None = None,
+    max_speed_kph: int | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+
+    filters = []
+    parameters = []
+
+    if name is not None:
+        filters.append("name ILIKE %s")
+        parameters.append(f"%{name}%")
+
+    if min_speed_kph is not None:
+        filters.append("speed_limit_kph >= %s")
+        parameters.append(min_speed_kph)
+
+    if max_speed_kph is not None:
+        filters.append("speed_limit_kph <= %s")
+        parameters.append(max_speed_kph)
+
+    if bbox is not None:
+        filters.append("""
+            ST_Intersects(
+                geom,
+                ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+            )
+        """)
+        parameters.extend(bbox)
+
+    where_clause = (
+        f"WHERE {' AND '.join(filters)}"
+        if filters else ""
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM road_segment
+            {where_clause}
+            """,
+            parameters,
+        )
+        count = cursor.fetchone()[0]
+
+
+        cursor.execute(
+            f"""
+            SELECT
+                road_id,
+                name,
+                speed_limit_kph,
+                is_oneway,
+                direction,
+                created_at,
+                ST_AsGeoJSON(geom)
+            FROM road_segment
+            {where_clause}
+            ORDER BY road_id
+            LIMIT %s OFFSET %s
+            """,
+            [*parameters, limit, offset],
+        )
+
+
+        rows = cursor.fetchall()
+
+    features = [
+        {
+            "type": "Feature",
+            "geometry": json.loads(row[6]),
+            "properties": {
+                "road_id": row[0],
+                "name": row[1],
+                "speed_limit_kph": row[2],
+                "is_oneway": row[3],
+                "direction": row[4],
+                "created_at": row[5].isoformat().replace("+00:00", "Z"),
+            },
+        }
+        for row in rows
+    ]
+
+
+    return features, count
+
+
+
 def get_road_segment_by_id(
     connection: Any,
     road_id: int,
@@ -107,7 +201,7 @@ def get_road_segment_by_id(
 
     if row is None:
         raise RoadReferenceNotFoundError(
-            "Road segment does not exist"
+            "road_id does not exist"
         )
 
     return {
@@ -193,7 +287,7 @@ def update_road_segment(
 
                 if row is None:
                     raise RoadReferenceNotFoundError(
-                        "Road segment does not exist"
+                        "road_id does not exist"
                     )
 
     except (
@@ -300,7 +394,7 @@ def delete_road_segment(
 
             if row is None:
                 raise RoadReferenceNotFoundError(
-                    "Road segment does not exist"
+                    "road_id does not exist"
                 )
 
     return {

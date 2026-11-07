@@ -13,11 +13,11 @@ class InvalidPingGeometryError(Exception):
 
 
 class PingReferenceNotFoundError(Exception):
-    """Raised when a location ping does not exist."""
+    """Raised when a ping_id does not exist."""
 
 
 class VehicleReferenceNotFoundError(Exception):
-    """Raised when a referenced vehicle does not exist."""
+    """Raised when a referenced vehicle_id does not exist."""
 
 
 def validate_ping_geometry(geom: dict[str, Any]) -> None:
@@ -143,7 +143,7 @@ def get_location_ping_by_id(
 
     if row is None:
         raise PingReferenceNotFoundError(
-            "Location ping does not exist"
+            "ping_id does not exist"
         )
 
     return {
@@ -184,7 +184,7 @@ def create_location_ping(
 
                 if cursor.fetchone() is None:
                     raise VehicleReferenceNotFoundError(
-                        "Vehicle does not exist"
+                        "vehicle_id does not exist"
                     )
 
                 cursor.execute(
@@ -234,7 +234,7 @@ def create_location_ping(
 
     except psycopg2.errors.ForeignKeyViolation as exc:
         raise VehicleReferenceNotFoundError(
-            "Vehicle does not exist"
+            "vehicle_id does not exist"
         ) from exc
 
     except (
@@ -305,7 +305,7 @@ def update_location_ping(
 
                     if cursor.fetchone() is None:
                         raise VehicleReferenceNotFoundError(
-                            "Vehicle does not exist"
+                            "vehicle_id does not exist"
                         )
 
                 cursor.execute(
@@ -324,12 +324,12 @@ def update_location_ping(
 
                 if row is None:
                     raise PingReferenceNotFoundError(
-                        "Location ping does not exist"
+                        "ping_id does not exist"
                     )
 
     except psycopg2.errors.ForeignKeyViolation as exc:
         raise VehicleReferenceNotFoundError(
-            "Vehicle does not exist"
+            "vehicle_id does not exist"
         ) from exc
 
     except (
@@ -348,9 +348,6 @@ def update_location_ping(
         "speed_kph": row[4],
         "heading_deg": row[5],
     }
-
-
-# DELETE LOCATION PING
 
 def delete_location_ping(
     connection: Any,
@@ -372,7 +369,7 @@ def delete_location_ping(
 
             if row is None:
                 raise PingReferenceNotFoundError(
-                    "Location ping does not exist"
+                    "ping_id does not exist"
                 )
 
     return {
@@ -404,7 +401,7 @@ def get_vehicle_pings(
 
         if cursor.fetchone() is None:
             raise VehicleReferenceNotFoundError(
-                "Vehicle does not exist"
+                "vehicle_id does not exist"
             )
 
         filters = ["vehicle_id = %s"]

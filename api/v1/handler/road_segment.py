@@ -6,14 +6,17 @@ from typing import Annotated, Any
 import json
 from pydantic import ValidationError
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from psycopg2.pool import ThreadedConnectionPool
+
 
 from api.v1.dao.road_segment import (
     InvalidRoadGeometryError,
     RoadReferenceNotFoundError,
     create_road_segment,
     get_road_segment,
+    get_road_segment_geojson,
     get_road_segment_by_id,
     update_road_segment,
     delete_road_segment
@@ -158,6 +161,56 @@ def get_road_segment_route(
     }
 
 
+
+@router.get("/geojson")
+def get_road_segment_geojson_route(
+    request: Request,
+    limit: Annotated[int, Query(ge=0)] = 15000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    name: str | None = None,
+    min_speed_kph: int | None = None,
+    max_speed_kph: int | None = None,
+    bbox: str | None = None,
+):
+
+    if (
+        min_speed_kph is not None
+        and max_speed_kph is not None
+        and min_speed_kph > max_speed_kph
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid speed range"
+        )
+
+    bbox_values = parse_bbox(bbox)
+
+    pool, connection = _get_connection(request)
+
+    try:
+        features, count = get_road_segment_geojson(
+            connection,
+            limit,
+            offset,
+            name,
+            min_speed_kph,
+            max_speed_kph,
+            bbox_values,
+        )
+    finally:
+        pool.putconn(connection)
+
+    return JSONResponse(
+        content={
+            "type": "FeatureCollection",
+            "count": count,
+            "limit": limit,
+            "offset": offset,
+            "features": features,
+        },
+        media_type="application/geo+json",
+    )
+
 @router.get("/{road_id}")
 def get_road_segment_by_id_route(
     request: Request,
@@ -177,7 +230,7 @@ def get_road_segment_by_id_route(
     except RoadReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Road segment does not exist"
+            detail="road_id does not exist"
         )
 
     finally:
@@ -241,7 +294,7 @@ async def update_road_segment_route(
     except (ValueError, ValidationError) as exc:
         raise HTTPException(
             status_code=400,
-            detail="Malformed JSON or invalid update payload"
+            detail="Malformed JSON or empty patch payload"
         ) from exc
 
     data = road.model_dump(exclude_unset=True)
@@ -249,7 +302,7 @@ async def update_road_segment_route(
     if not data:
         raise HTTPException(
             status_code=400,
-            detail="Empty patch payload"
+            detail="Malformed JSON or empty patch payload"
         )
 
     pool, connection = _get_connection(request)
@@ -264,7 +317,7 @@ async def update_road_segment_route(
     except RoadReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Road segment does not exist"
+            detail="road_id does not exist"
         )
 
     except InvalidRoadGeometryError:
@@ -304,7 +357,7 @@ def delete_road_segment_route(
     except RoadReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Road segment does not exist"
+            detail="road_id does not exist"
         )
 
     finally:
