@@ -4,14 +4,14 @@ from typing import Any
 
 import json
 import psycopg2
-
+from fastapi.responses import JSONResponse
 
 class InvalidRoadGeometryError(Exception):
     """Raised when the road geometry is invalid."""
 
 
 class RoadReferenceNotFoundError(Exception):
-    """Raised when a road segment does not exist."""
+    """Raised when a road id does not exist."""
 
 def get_road_segment(
     connection: Any,
@@ -88,6 +88,57 @@ def get_road_segment(
     ]
     return road_segment, count
 
+
+
+@router.get("/geojson")
+def get_road_segment_geojson_route(
+    request: Request,
+    limit: Annotated[int, Query(ge=0)] = 15000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    name: str | None = None,
+    min_speed_kph: Annotated[int | None, Query(ge=0)] = None,
+    max_speed_kph: Annotated[int | None, Query(ge=0)] = None,
+    bbox: str | None = None,
+):
+
+    if (
+        min_speed_kph is not None
+        and max_speed_kph is not None
+        and min_speed_kph > max_speed_kph
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or inconsistent filter values"
+        )
+
+    bbox_values = parse_bbox(bbox)
+
+    pool, connection = _get_connection(request)
+
+    try:
+        features, count = get_road_segment_geojson(
+            connection,
+            limit,
+            offset,
+            name,
+            min_speed_kph,
+            max_speed_kph,
+            bbox_values,
+        )
+    finally:
+        pool.putconn(connection)
+
+    return JSONResponse(
+        content={
+            "type": "FeatureCollection",
+            "count": count,
+            "limit": limit,
+            "offset": offset,
+            "features": features,
+        },
+        media_type="application/geo+json",
+    )
+
 def get_road_segment_by_id(
     connection: Any,
     road_id: int,
@@ -107,7 +158,7 @@ def get_road_segment_by_id(
 
     if row is None:
         raise RoadReferenceNotFoundError(
-            "Road segment does not exist"
+            "road_id does not exist"
         )
 
     return {
@@ -193,7 +244,7 @@ def update_road_segment(
 
                 if row is None:
                     raise RoadReferenceNotFoundError(
-                        "Road segment does not exist"
+                        "road_id does not exist"
                     )
 
     except (
@@ -300,7 +351,7 @@ def delete_road_segment(
 
             if row is None:
                 raise RoadReferenceNotFoundError(
-                    "Road segment does not exist"
+                    "road_id does not exist"
                 )
 
     return {

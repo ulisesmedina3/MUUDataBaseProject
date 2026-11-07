@@ -93,7 +93,7 @@ def parse_bbox(
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail="Invalid bbox",
+            detail="Invalid query parameter values.",
         ) from exc
 
 
@@ -110,7 +110,7 @@ def parse_timestamp(ts: str | None) -> datetime | None:
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail="Invalid timestamp",
+            detail="Invalid query parameter values.",
         ) from exc
 
 
@@ -213,7 +213,7 @@ def get_location_ping_by_id_route(
     except PingReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Location ping does not exist"
+            detail="ping_id does not exist"
         )
 
     finally:
@@ -257,7 +257,7 @@ def get_vehicle_pings_route(
     except VehicleReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Vehicle does not exist"
+            detail="vehicle_id does not exist"
         )
 
     finally:
@@ -306,7 +306,7 @@ async def create_location_ping_route(request: Request):
         except VehicleReferenceNotFoundError as exc:
             raise HTTPException(
                 status_code=404,
-                detail="Vehicle does not exist",
+                detail="vehicle_id does not exist",
             ) from exc
 
     finally:
@@ -342,7 +342,7 @@ async def update_location_ping_route(
     if not data:
         raise HTTPException(
             status_code=400,
-            detail="Empty patch payload"
+            detail="Malformed JSON or empty patch payload."
         )
 
     pool, connection = _get_connection(request)
@@ -357,13 +357,13 @@ async def update_location_ping_route(
     except PingReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Location ping does not exist"
+            detail="ping_id does not exist"
         )
 
     except VehicleReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Vehicle does not exist"
+            detail="vehicle_id does not exist"
         )
 
     except InvalidPingGeometryError:
@@ -403,7 +403,7 @@ def delete_location_ping_route(
     except PingReferenceNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="Location ping does not exist"
+            detail="ping_id does not exist"
         )
 
     finally:
