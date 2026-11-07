@@ -139,12 +139,16 @@ def get_road_segment_geojson(
         )
         count = cursor.fetchone()[0]
 
+
         cursor.execute(
             f"""
             SELECT
                 road_id,
                 name,
                 speed_limit_kph,
+                is_oneway,
+                direction,
+                created_at,
                 ST_AsGeoJSON(geom)
             FROM road_segment
             {where_clause}
@@ -154,20 +158,25 @@ def get_road_segment_geojson(
             [*parameters, limit, offset],
         )
 
+
         rows = cursor.fetchall()
 
     features = [
         {
             "type": "Feature",
-            "geometry": json.loads(row[3]),
+            "geometry": json.loads(row[6]),
             "properties": {
                 "road_id": row[0],
                 "name": row[1],
                 "speed_limit_kph": row[2],
+                "is_oneway": row[3],
+                "direction": row[4],
+                "created_at": row[5].isoformat().replace("+00:00", "Z"),
             },
         }
         for row in rows
     ]
+
 
     return features, count
 
