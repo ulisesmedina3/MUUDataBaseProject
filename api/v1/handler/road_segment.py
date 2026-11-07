@@ -14,7 +14,7 @@ from api.v1.dao.road_segment import (
     RoadReferenceNotFoundError,
     create_road_segment,
     get_road_segment,
-	get_road_segment_geojson,
+    get_road_segment_geojson,
     get_road_segment_by_id,
     update_road_segment,
     delete_road_segment
