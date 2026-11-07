@@ -89,55 +89,89 @@ def get_road_segment(
     return road_segment, count
 
 
-
-@router.get("/geojson")
-def get_road_segment_geojson_route(
-    request: Request,
-    limit: Annotated[int, Query(ge=0)] = 15000,
-    offset: Annotated[int, Query(ge=0)] = 0,
+def get_road_segment_geojson(
+    connection: Any,
+    limit: int,
+    offset: int,
     name: str | None = None,
-    min_speed_kph: Annotated[int | None, Query(ge=0)] = None,
-    max_speed_kph: Annotated[int | None, Query(ge=0)] = None,
-    bbox: str | None = None,
-):
+    min_speed_kph: int | None = None,
+    max_speed_kph: int | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
 
-    if (
-        min_speed_kph is not None
-        and max_speed_kph is not None
-        and min_speed_kph > max_speed_kph
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or inconsistent filter values"
-        )
+    filters = []
+    parameters = []
 
-    bbox_values = parse_bbox(bbox)
+    if name is not None:
+        filters.append("name ILIKE %s")
+        parameters.append(f"%{name}%")
 
-    pool, connection = _get_connection(request)
+    if min_speed_kph is not None:
+        filters.append("speed_limit_kph >= %s")
+        parameters.append(min_speed_kph)
 
-    try:
-        features, count = get_road_segment_geojson(
-            connection,
-            limit,
-            offset,
-            name,
-            min_speed_kph,
-            max_speed_kph,
-            bbox_values,
-        )
-    finally:
-        pool.putconn(connection)
+    if max_speed_kph is not None:
+        filters.append("speed_limit_kph <= %s")
+        parameters.append(max_speed_kph)
 
-    return JSONResponse(
-        content={
-            "type": "FeatureCollection",
-            "count": count,
-            "limit": limit,
-            "offset": offset,
-            "features": features,
-        },
-        media_type="application/geo+json",
+    if bbox is not None:
+        filters.append("""
+            ST_Intersects(
+                geom,
+                ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+            )
+        """)
+        parameters.extend(bbox)
+
+    where_clause = (
+        f"WHERE {' AND '.join(filters)}"
+        if filters else ""
     )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM road_segment
+            {where_clause}
+            """,
+            parameters,
+        )
+        count = cursor.fetchone()[0]
+
+        cursor.execute(
+            f"""
+            SELECT
+                road_id,
+                name,
+                speed_limit_kph,
+                ST_AsGeoJSON(geom)
+            FROM road_segment
+            {where_clause}
+            ORDER BY road_id
+            LIMIT %s OFFSET %s
+            """,
+            [*parameters, limit, offset],
+        )
+
+        rows = cursor.fetchall()
+
+    features = [
+        {
+            "type": "Feature",
+            "geometry": json.loads(row[3]),
+            "properties": {
+                "road_id": row[0],
+                "name": row[1],
+                "speed_limit_kph": row[2],
+            },
+        }
+        for row in rows
+    ]
+
+    return features, count
+
+
 
 def get_road_segment_by_id(
     connection: Any,

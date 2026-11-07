@@ -6,8 +6,10 @@ from typing import Annotated, Any
 import json
 from pydantic import ValidationError
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from psycopg2.pool import ThreadedConnectionPool
+
 
 from api.v1.dao.road_segment import (
     InvalidRoadGeometryError,
@@ -159,6 +161,7 @@ def get_road_segment_route(
     }
 
 
+
 @router.get("/geojson")
 def get_road_segment_geojson_route(
     request: Request,
@@ -197,13 +200,16 @@ def get_road_segment_geojson_route(
     finally:
         pool.putconn(connection)
 
-    return {
-        "type": "FeatureCollection",
-        "count": count,
-        "limit": limit,
-        "offset": offset,
-        "features": features,
-    }
+    return JSONResponse(
+        content={
+            "type": "FeatureCollection",
+            "count": count,
+            "limit": limit,
+            "offset": offset,
+            "features": features,
+        },
+        media_type="application/geo+json",
+    )
 
 @router.get("/{road_id}")
 def get_road_segment_by_id_route(
