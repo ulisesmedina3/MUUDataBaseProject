@@ -11,6 +11,10 @@ from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 from api.v1.dao.vehicle import ensure_vehicle_constraints
 from api.v1.handler.vehicle import router as vehicle_router
 
+from api.v1.dao.parking_area import ParkingAreaDAO
+from api.v1.handler.parking_area import ParkingAreaHandler
+
+#------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,17 +49,27 @@ def api_info():
         "message": "MUU Vehicle API is running",
         "endpoints": {
             "vehicles": "/api/v1/vehicles",
+            "parking_areas": "/api/v1/parking_areas",
             "health": "/health",
         },
     }
-
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 
+# ==========================
+# 5.3 Parking Area
+# ==========================
+
+# Gets all of the parking areas in the database
+@app.get("/api/v1/parking_areas")
+async def get_parking_areas():
+    return ParkingAreaHandler().get_all_parking_areas()
+
 app.include_router(vehicle_router)
+# app.include_router(parking_area_router)
 
 
 if __name__ == "__main__":
