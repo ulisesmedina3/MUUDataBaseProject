@@ -6,6 +6,8 @@ import json
 import psycopg2
 from fastapi.responses import JSONResponse
 
+from api.v1.dao.time_format import format_timestamp
+
 class InvalidRoadGeometryError(Exception):
     """Raised when the road geometry is invalid."""
 
@@ -82,7 +84,7 @@ def get_road_segment(
             "road_id": row[0],
             "name": row[1],
             "speed_limit_kph": row[2],
-            "created_at": row[3].isoformat(),
+            "created_at": format_timestamp(row[3]),
         }
         for row in rows
     ]
@@ -171,7 +173,7 @@ def get_road_segment_geojson(
                 "speed_limit_kph": row[2],
                 "is_oneway": row[3],
                 "direction": row[4],
-                "created_at": row[5].isoformat().replace("+00:00", "Z"),
+                "created_at": format_timestamp(row[5]),
             },
         }
         for row in rows
@@ -209,7 +211,7 @@ def get_road_segment_by_id(
         "name": row[1],
         "speed_limit_kph": row[2],
         "geom": json.loads(row[3]),
-        "created_at": row[4].isoformat(),
+        "created_at": format_timestamp(row[4]),
     }
 
 def update_road_segment(
@@ -303,7 +305,7 @@ def update_road_segment(
         "name": row[1],
         "speed_limit_kph": row[2],
         "geom": json.loads(row[3]),
-        "created_at": row[4].isoformat(),
+        "created_at": format_timestamp(row[4]),
     }
 
 
@@ -371,7 +373,7 @@ def create_road_segment(
         "is_oneway": row[3],
         "direction": row[4],
         "geom": json.loads(row[5]),
-        "created_at": row[6].isoformat(),
+        "created_at": format_timestamp(row[6]),
     }
 
 def delete_road_segment(

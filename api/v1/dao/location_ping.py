@@ -7,6 +7,8 @@ import json
 import math
 import psycopg2
 
+from api.v1.dao.time_format import format_timestamp
+
 
 class InvalidPingGeometryError(Exception):
     """Raised when the ping geometry is invalid."""
@@ -112,7 +114,7 @@ def get_location_ping(
         {
             "ping_id": row[0],
             "vehicle_id": row[1],
-            "ts": row[2].isoformat(),
+            "ts": format_timestamp(row[2]),
             "speed_kph": row[3],
             "heading_deg": row[4],
         }
@@ -149,7 +151,7 @@ def get_location_ping_by_id(
     return {
         "ping_id": row[0],
         "vehicle_id": row[1],
-        "ts": row[2].isoformat(),
+        "ts": format_timestamp(row[2]),
         "geom": json.loads(row[3]),
         "speed_kph": row[4],
         "heading_deg": row[5],
@@ -248,7 +250,7 @@ def create_location_ping(
     return {
         "ping_id": row[0],
         "vehicle_id": row[1],
-        "ts": row[2].isoformat(),
+        "ts": format_timestamp(row[2]),
         "geom": json.loads(row[3]),
         "speed_kph": row[4],
         "heading_deg": row[5],
@@ -343,7 +345,7 @@ def update_location_ping(
     return {
         "ping_id": row[0],
         "vehicle_id": row[1],
-        "ts": row[2].isoformat(),
+        "ts": format_timestamp(row[2]),
         "geom": json.loads(row[3]),
         "speed_kph": row[4],
         "heading_deg": row[5],
@@ -443,7 +445,7 @@ def get_vehicle_pings(
     location_pings = [
         {
             "ping_id": row[0],
-            "ts": row[1].isoformat(),
+            "ts": format_timestamp(row[1]),
             "geom": json.loads(row[2]),
             "speed_kph": row[3],
             "heading_deg": row[4],

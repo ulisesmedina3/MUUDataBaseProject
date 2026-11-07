@@ -5,6 +5,8 @@ from typing import Any
 
 import psycopg2
 
+from api.v1.dao.time_format import format_timestamp
+
 
 class DuplicatePlateError(Exception):
     """Raised when a vehicle plate number is already registered."""
@@ -22,11 +24,6 @@ class VehicleDeleteConflictError(Exception):
     """Raised when a vehicle cannot be deleted because it is referenced."""
 
 
-def _format_timestamp(value: Any) -> str:
-    timestamp = value.isoformat()
-    return timestamp if value.tzinfo is not None else f"{timestamp}Z"
-
-
 def _vehicle_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     return {
         "vehicle_id": row[0],
@@ -36,7 +33,7 @@ def _vehicle_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "make": row[4],
         "model": row[5],
         "year": row[6],
-        "created_at": _format_timestamp(row[7]),
+        "created_at": format_timestamp(row[7]),
     }
 
 
@@ -118,7 +115,7 @@ def get_vehicles(
             "year": row[4],
             "vehicle_type_id": row[5],
             "vehicle_status_id": row[6],
-            "created_at": _format_timestamp(row[7]),
+            "created_at": format_timestamp(row[7]),
         }
         for row in rows
     ]
@@ -212,7 +209,7 @@ def create_vehicle(
         "make": row[4],
         "model": row[5],
         "year": row[6],
-        "created_at": _format_timestamp(row[7]),
+        "created_at": format_timestamp(row[7]),
     }
 
 
@@ -359,7 +356,7 @@ def get_current_location(connection: Any, vehicle_id: int) -> dict[str, Any] | N
         "vehicle_type": row[3],
         "fuel_type": row[4],
         "emissions_rating": row[5],
-        "last_ts": _format_timestamp(row[6]),
+        "last_ts": format_timestamp(row[6]),
         "last_geom": json.loads(row[7]),
         "speed_kph": row[8],
         "heading_deg": row[9],
