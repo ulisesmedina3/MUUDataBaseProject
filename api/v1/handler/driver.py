@@ -124,7 +124,10 @@ async def update_driver(
 
     data = payload.model_dump(exclude_unset=True)
     if not data:
-        raise HTTPException(status_code=400, detail="Provide at least one field to update")
+        raise HTTPException(
+            status_code=400,
+            detail="Malformed JSON or empty update payload",
+        )
     if any(
         data[field] is None
         for field in ("first_name", "last_name", "license_number")

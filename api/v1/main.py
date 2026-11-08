@@ -188,10 +188,30 @@ async def api_validation_error(
     request: Request, exc: RequestValidationError
 ):
     if request.method == "POST" and request.url.path == "/api/v1/driver":
+        error_types = {error["type"] for error in exc.errors()}
+        if error_types.intersection(
+            {"json_invalid", "model_type", "model_attributes_type"}
+        ):
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Malformed JSON or invalid payload shape"},
+            )
         return JSONResponse(
-            status_code=400,
-            content={"message": "Malformed JSON or invalid payload shape"},
+            status_code=422,
+            content={"message": "A required field is null or invalid"},
         )
+
+    if request.method == "PUT" and request.url.path.startswith(
+        "/api/v1/driver/"
+    ):
+        error_types = {error["type"] for error in exc.errors()}
+        if error_types.intersection(
+            {"json_invalid", "model_type", "model_attributes_type"}
+        ):
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Malformed JSON or empty update payload"},
+            )
 
     if request.url.path == "/api/v1/driver" or request.url.path.startswith(
         "/api/v1/driver/"
