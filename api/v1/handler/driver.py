@@ -112,6 +112,7 @@ async def get_driver(request: Request, driver_id: int):
     finally:
         pool.putconn(connection)
 
+# Update a driver by its ID
 @router.put("/{driver_id}", status_code=200)
 async def update_driver(
     request: Request,
