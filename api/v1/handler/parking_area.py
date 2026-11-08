@@ -14,6 +14,29 @@ class ParkingAreaHandler:
         dao = ParkingAreaDAO()
         return dao.get_all_parking_areas()
 
+    def get_parking_areas(self, name, bbox, limit, offset):
+        dao = ParkingAreaDAO()
+
+        if name is None:
+            name = None
+
+        #bbox syntax: [min_Longitude, min_Latitiude, max_Longitude, max_Latitude]
+        if bbox is not None and (bbox[0] >= bbox[2] or bbox[1] >= bbox[3]):
+            raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure that min_Longitude < max_Longitude and min_Latitude < max_Latitude.")
+
+        # If any values are None they are set to a default value
+        if limit is None:
+            limit = 20
+        
+        if offset is None:
+            offset = 0
+
+        result = dao.get_parking_areas(name, bbox, limit, offset)
+        if result[1] == 0:
+            raise HTTPException(status_code=404, detail="No parking areas found matching the provided criteria.")
+        else:
+            return result
+
     def get_parking_area_by_id(self, parking_area_id: int):
         dao = ParkingAreaDAO()
         result = dao.get_parking_area_by_id(parking_area_id)
