@@ -179,7 +179,10 @@ async def update_vehicle_route(request: Request, vehicle_id: str):
         except VehicleReferenceNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Referenced foreign key does not exist") from exc
         except DuplicatePlateError as exc:
-            raise HTTPException(status_code=409, detail="plate_number already exists") from exc
+            raise HTTPException(
+                status_code=409,
+                detail="Updated plate_number conflicts with another vehicle",
+            ) from exc
     finally:
         pool.putconn(connection)
 

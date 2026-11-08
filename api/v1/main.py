@@ -12,6 +12,7 @@ from api.v1.dao.vehicle import ensure_vehicle_constraints
 from api.v1.handler.vehicle import router as vehicle_router
 from api.v1.handler.road_segment import router as road_segment_router
 from api.v1.handler.location_ping import router as location_ping_router
+from api.v1.handler.trip import router as trip_router, vehicle_trips_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,6 +60,8 @@ def health_check():
 app.include_router(vehicle_router)
 app.include_router(road_segment_router)
 app.include_router(location_ping_router)
+app.include_router(trip_router)
+app.include_router(vehicle_trips_router)
 
 if __name__ == "__main__":
     uvicorn.run(
