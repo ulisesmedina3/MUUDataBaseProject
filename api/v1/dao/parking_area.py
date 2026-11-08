@@ -19,16 +19,17 @@ class ParkingAreaDAO():
     def __init__(self):
         self.pool = SimpleConnectionPool(POOL_CONFIG["minconn"], POOL_CONFIG["maxconn"], **PG_DB_CONFIG)
 
-    def get_all_parking_areas(self) -> tuple[list[ParkingArea], int]:
-        conn = self.pool.getconn()
-        cursor = conn.cursor()
+    # Gets all of the parking areas in the database
+    def get_all_parking_areas(self) -> list[ParkingArea]:
+        conn = self.pool.getconn() # Get a connection from the pool
+        cursor = conn.cursor() # Create a cursor to execute the query
         query = """
                 SELECT parking_area_id, name, capacity, ST_AsText(geom), created_at
                 FROM parking_area
                 """
-        cursor.execute(query)
-        result : list[ParkingArea] = []
-        for row in cursor:
+        cursor.execute(query) # Execute the query and stores the result in the cursor
+        result : list[ParkingArea] = [] # Create a list to hold the results
+        for row in cursor: # Loops through each row of the table queried by the cursor and creates a ParkingArea object for each row and appends it to the result list
             result.append(ParkingArea(
                 parking_area_id=row[0],
                 name=row[1],
@@ -37,6 +38,36 @@ class ParkingAreaDAO():
                 created_at=row[4]
             ))
         
-        cursor.close()
-        self.pool.putconn(conn)
+        cursor.close() # Close the cursor
+        self.pool.putconn(conn) # Return the connection to the pool
         return result
+
+    def get_parking_area_by_id(self, parking_area_id: int) -> ParkingArea | None:
+        conn = self.pool.getconn() # Get a connection from the pool
+        cursor = conn.cursor() # Create a cursor to execute the query
+        query = """
+                SELECT parking_area_id, name, capacity, ST_AsText(geom), created_at
+                FROM parking_area
+                WHERE parking_area_id = %s
+                """
+        cursor.execute(query, (parking_area_id,)) # Execute the query and stores the result in the cursor
+        row = cursor.fetchone() # Fetches the first row of the result set
+
+        if row is None:
+            cursor.close() # Close the cursor
+            self.pool.putconn(conn) # Return the connection to the pool
+            print("Does not exist")
+            return None
+        
+        parking_area = ParkingArea(
+            parking_area_id=row[0],
+            name=row[1],
+            capacity=row[2],
+            geom=row[3],
+            created_at=row[4]
+        )
+        
+        cursor.close() # Close the cursor
+        self.pool.putconn(conn) # Return the connection to the pool
+        print("Does exist")
+        return parking_area

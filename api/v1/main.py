@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
@@ -67,6 +67,16 @@ def health_check():
 @app.get("/api/v1/parking_areas")
 async def get_parking_areas():
     return ParkingAreaHandler().get_all_parking_areas()
+
+# Gets a specific parking area by its ID (ID must be a positive integer)
+@app.get("/api/v1/parking_areas/{parking_area_id}")
+async def get_parking_area(parking_area_id: int):
+    if parking_area_id < 1:
+        print("parking_area_id is less than 1")
+        raise HTTPException(status_code=400, detail="Invalid parking_area_id. Must be a positive integer.")
+    else:
+        print("parking_area_id is valid")
+        return ParkingAreaHandler().get_parking_area_by_id(parking_area_id)
 
 app.include_router(vehicle_router)
 # app.include_router(parking_area_router)
