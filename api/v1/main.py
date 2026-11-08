@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
@@ -15,7 +15,7 @@ from api.v1.handler.location_ping import router as location_ping_router, vehicle
 from api.v1.handler.trip import router as trip_router, vehicle_trips_router
 from api.v1.handler.vehicle_assignment import router as assignment_router
 
-from api.v1.dao.parking_area import ParkingAreaDAO
+from api.v1.dao.parking_area import ParkingAreaCreate
 from api.v1.handler.parking_area import ParkingAreaHandler
 
 #------------------------------------
@@ -66,6 +66,10 @@ def health_check():
 # ==========================
 # 5.3 Parking Area
 # ==========================
+
+@app.post("/api/v1/parking_areas")
+async def create_parking_area(payload: ParkingAreaCreate, request: Request):
+    return ParkingAreaHandler().create_parking_area(request, payload)
 
 # Get a query of all parking areas or a filtered query
 @app.get("/api/v1/parking_areas")

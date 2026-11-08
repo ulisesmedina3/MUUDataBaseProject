@@ -1,6 +1,7 @@
 from __future__ import annotations
+from typing import Any, Literal
 
-from typing import Any
+import json
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 import psycopg2
 from datetime import datetime
@@ -15,9 +16,47 @@ class ParkingArea(BaseModel):
     geom: str
     created_at: datetime
 
+class GeoJSONPolygon(BaseModel):
+    type: Literal["Polygon"]
+    coordinates: list[list[list[float]]]
+
+class ParkingAreaCreate(BaseModel):
+    name: str = Field(min_length=1)
+    capacity: int = Field(ge=0)
+    geom: GeoJSONPolygon
+
 class ParkingAreaDAO():
     def __init__(self):
         self.pool = SimpleConnectionPool(POOL_CONFIG["minconn"], POOL_CONFIG["maxconn"], **PG_DB_CONFIG)
+    
+    @staticmethod
+    def create_parking_area(conn: Any, payload: ParkingAreaCreate) -> ParkingArea:
+        with conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))", ('parking_area.parking_area_id',),
+                )
+                cursor.execute(
+                    "SELECT COALESCE(MAX(parking_area_id), 0) + 1 FROM parking_area"
+                )
+                parking_area_id = cursor.fetchone()[0]
+
+                cursor.execute(
+                    """
+                        INSERT INTO parking_area (parking_area_id, name, capacity, geom, created_at)
+                        VALUES (%s, %s, %s, ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), CURRENT_TIMESTAMP)
+                        RETURNING parking_area_id, name, capacity, ST_AsText(geom), created_at
+                    """,
+                    (
+                        parking_area_id,
+                        payload.name,
+                        payload.capacity,
+                        json.dumps(payload.geom.model_dump())
+                    ),
+                )
+                row = cursor.fetchone() # Fetches the first row of the result set
+
+        return ParkingArea(parking_area_id=row[0],name=row[1],capacity=row[2],geom=row[3],created_at=row[4])
 
     # Gets all of the parking areas in the database
     def get_all_parking_areas(self) -> list[ParkingArea]:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from psycopg2.pool import ThreadedConnectionPool
-from api.v1.dao.parking_area import ParkingAreaDAO
+from api.v1.dao.parking_area import ParkingAreaDAO, ParkingAreaCreate, ParkingArea
 
 # from api.v1.dao.parking_area import (
 #     # DuplicateParkingAreaError,
@@ -10,6 +10,16 @@ from api.v1.dao.parking_area import ParkingAreaDAO
 #     get_parking_areas,)
 
 class ParkingAreaHandler:
+    def create_parking_area(self, request: Request, payload: ParkingAreaCreate) -> ParkingArea:
+        pool = getattr(request.app.state, "pool", None)
+        if pool is None:
+            raise HTTPException(status_code=503, detail="Database connection unavailable")
+        conn = pool.getconn()
+        try:
+            return ParkingAreaDAO.create_parking_area(conn, payload)
+        finally:
+            pool.putconn(conn)
+
     def get_all_parking_areas(self):
         dao = ParkingAreaDAO()
         return dao.get_all_parking_areas()
