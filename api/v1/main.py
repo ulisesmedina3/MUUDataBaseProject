@@ -11,7 +11,7 @@ from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 from api.v1.dao.vehicle import ensure_vehicle_constraints
 from api.v1.handler.vehicle import router as vehicle_router
 from api.v1.handler.road_segment import router as road_segment_router
-from api.v1.handler.location_ping import router as location_ping_router
+from api.v1.handler.location_ping import router as location_ping_router, vehicle_pings_router
 from api.v1.handler.trip import router as trip_router, vehicle_trips_router
 from api.v1.handler.vehicle_assignment import router as assignment_router
 
@@ -110,6 +110,7 @@ async def delete_parking_area(parking_area_id: int):
 app.include_router(vehicle_router)
 app.include_router(road_segment_router)
 app.include_router(location_ping_router)
+app.include_router(vehicle_pings_router)
 app.include_router(trip_router)
 app.include_router(vehicle_trips_router)
 app.include_router(assignment_router)
