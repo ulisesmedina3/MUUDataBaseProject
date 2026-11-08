@@ -24,6 +24,13 @@ class DriverCreate(BaseModel):
     hired_at: datetime | None = None
 
 
+class DriverUpdate(BaseModel):
+    first_name: str | None = Field(default=None, min_length=1, strip_whitespace=True)
+    last_name: str | None = Field(default=None, min_length=1, strip_whitespace=True)
+    license_number: str | None = Field(default=None, min_length=1, strip_whitespace=True)
+    hired_at: datetime | None = None
+
+
 def _connection(request: Request) -> tuple[ThreadedConnectionPool, Any]:
     pool: ThreadedConnectionPool | None = getattr(request.app.state, "pool", None)
     if pool is None:
@@ -102,6 +109,42 @@ async def get_driver(request: Request, driver_id: int):
             return DriverDAO.get_driver_by_id(connection, driver_id)
         except DriverNotFoundError as exc:
             raise HTTPException(status_code=404, detail="driver_id does not exist") from exc
+    finally:
+        pool.putconn(connection)
+
+@router.put("/{driver_id}", status_code=200)
+async def update_driver(
+    request: Request,
+    driver_id: int,
+    payload: DriverUpdate,
+):
+    if driver_id <= 0:
+        raise HTTPException(status_code=400, detail="driver_id must be a positive integer")
+
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="Provide at least one field to update")
+    if any(
+        data[field] is None
+        for field in ("first_name", "last_name", "license_number")
+        if field in data
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="first_name, last_name, and license_number cannot be null",
+        )
+
+    pool, connection = _connection(request)
+    try:
+        try:
+            return DriverDAO.update_driver(connection, driver_id, data)
+        except DriverNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="driver_id does not exist") from exc
+        except DriverLicenseConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="license_number already exists",
+            ) from exc
     finally:
         pool.putconn(connection)
 

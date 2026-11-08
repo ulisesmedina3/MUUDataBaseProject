@@ -152,6 +152,70 @@ class DriverDAO:
         return DriverDAO._from_row(row)
 
     @staticmethod
+    def update_driver(
+        connection: Any,
+        driver_id: int,
+        data: dict[str, Any],
+    ) -> Driver:
+        field_expressions = {
+            "first_name": "first_name = %s",
+            "last_name": "last_name = %s",
+            "license_number": "license_number = %s",
+            "hired_at": "hired_at = %s",
+        }
+        if not data or any(field not in field_expressions for field in data):
+            raise ValueError("Invalid driver update")
+
+        with connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT driver_id FROM driver WHERE driver_id = %s FOR UPDATE",
+                    (driver_id,),
+                )
+                if cursor.fetchone() is None:
+                    raise DriverNotFoundError
+
+                if "license_number" in data:
+                    license_number = data["license_number"]
+                    cursor.execute(
+                        """
+                        SELECT pg_advisory_xact_lock(
+                            hashtext('driver.license_number'),
+                            hashtext(LOWER(%s))
+                        )
+                        """,
+                        (license_number,),
+                    )
+                    cursor.execute(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1 FROM driver
+                            WHERE LOWER(license_number) = LOWER(%s)
+                              AND driver_id <> %s
+                        )
+                        """,
+                        (license_number, driver_id),
+                    )
+                    if cursor.fetchone()[0]:
+                        raise DriverLicenseConflictError
+
+                assignments = ", ".join(
+                    field_expressions[field] for field in data
+                )
+                cursor.execute(
+                    f"""
+                    UPDATE driver
+                    SET {assignments}
+                    WHERE driver_id = %s
+                    RETURNING driver_id, first_name, last_name, license_number, hired_at
+                    """,
+                    [*data.values(), driver_id],
+                )
+                row = cursor.fetchone()
+
+        return DriverDAO._from_row(row)
+
+    @staticmethod
     def delete_driver(connection: Any, driver_id: int) -> dict[str, Any]:
         try:
             with connection:
