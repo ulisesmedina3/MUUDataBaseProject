@@ -5,10 +5,14 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from psycopg2.pool import ThreadedConnectionPool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 from api.v1.dao.vehicle import ensure_vehicle_constraints
@@ -180,9 +184,18 @@ async def update_parking_area(
 
 
 @app.exception_handler(RequestValidationError)
-async def parking_area_validation_error(
+async def api_validation_error(
     request: Request, exc: RequestValidationError
 ):
+    if request.url.path == "/api/v1/driver" or request.url.path.startswith(
+        "/api/v1/driver/"
+    ):
+        messages = "; ".join(error["msg"] for error in exc.errors())
+        return JSONResponse(
+            status_code=422,
+            content={"message": messages},
+        )
+
     is_parking_area_post = (
         request.method == "POST"
         and request.url.path == "/api/v1/parking_areas"
@@ -205,6 +218,20 @@ async def parking_area_validation_error(
         )
 
     return await request_validation_exception_handler(request, exc)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def api_http_exception(request: Request, exc: StarletteHTTPException):
+    if request.url.path == "/api/v1/driver" or request.url.path.startswith(
+        "/api/v1/driver/"
+    ):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"message": exc.detail},
+            headers=exc.headers,
+        )
+
+    return await http_exception_handler(request, exc)
 
 
 app.include_router(vehicle_router)

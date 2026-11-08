@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.dao.driver import (
     DriverDAO,
     DriverDeleteConflictError,
+    DriverLicenseConflictError,
     DriverNotFoundError,
 )
 
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
+
+
+class DriverCreate(BaseModel):
+    first_name: str = Field(min_length=1, strip_whitespace=True)
+    last_name: str = Field(min_length=1, strip_whitespace=True)
+    license_number: str = Field(min_length=1, strip_whitespace=True)
+    hired_at: datetime | None = None
 
 
 def _connection(request: Request) -> tuple[ThreadedConnectionPool, Any]:
@@ -19,6 +29,26 @@ def _connection(request: Request) -> tuple[ThreadedConnectionPool, Any]:
     if pool is None:
         raise HTTPException(status_code=503, detail="Database connection unavailable")
     return pool, pool.getconn()
+
+
+@router.post("", status_code=201)
+async def create_driver(payload: DriverCreate, request: Request):
+    pool, connection = _connection(request)
+    try:
+        return DriverDAO.create_driver(
+            connection,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            license_number=payload.license_number,
+            hired_at=payload.hired_at,
+        )
+    except DriverLicenseConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="license_number already exists",
+        ) from exc
+    finally:
+        pool.putconn(connection)
 
 # Gets a query of the driver table
 @router.get("", status_code=200)

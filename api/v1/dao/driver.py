@@ -23,6 +23,10 @@ class DriverDeleteConflictError(Exception):
     """Raised when a driver is referenced by another record."""
 
 
+class DriverLicenseConflictError(Exception):
+    """Raised when a license number is already assigned to a driver."""
+
+
 class DriverDAO:
     @staticmethod
     def _from_row(row: tuple[Any, ...]) -> Driver:
@@ -33,6 +37,56 @@ class DriverDAO:
             license_number=row[3],
             hired_at=row[4],
         )
+
+    @staticmethod
+    def create_driver(
+        connection: Any,
+        first_name: str,
+        last_name: str,
+        license_number: str,
+        hired_at: datetime | None = None,
+    ) -> Driver:
+        with connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT pg_advisory_xact_lock(
+                        hashtext('driver.license_number'),
+                        hashtext(LOWER(%s))
+                    )
+                    """,
+                    (license_number,),
+                )
+                cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM driver
+                        WHERE LOWER(license_number) = LOWER(%s)
+                    )
+                    """,
+                    (license_number,),
+                )
+                if cursor.fetchone()[0]:
+                    raise DriverLicenseConflictError
+
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext('driver.driver_id'))"
+                )
+                cursor.execute("SELECT COALESCE(MAX(driver_id), 0) + 1 FROM driver")
+                driver_id = cursor.fetchone()[0]
+                cursor.execute(
+                    """
+                    INSERT INTO driver (
+                        driver_id, first_name, last_name, license_number, hired_at
+                    )
+                    VALUES (%s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP))
+                    RETURNING driver_id, first_name, last_name, license_number, hired_at
+                    """,
+                    (driver_id, first_name, last_name, license_number, hired_at),
+                )
+                row = cursor.fetchone()
+
+        return DriverDAO._from_row(row)
 
     @staticmethod
     def get_drivers(
