@@ -78,6 +78,9 @@ async def get_parking_area(parking_area_id: int):
         print("parking_area_id is valid")
         return ParkingAreaHandler().get_parking_area_by_id(parking_area_id)
 
+@app.delete("/api/v1/parking_areas/{parking_area_id}")
+async def delete_parking_area(parking_area_id: int):
+
 app.include_router(vehicle_router)
 # app.include_router(parking_area_router)
 
