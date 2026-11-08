@@ -17,6 +17,7 @@ from api.v1.handler.road_segment import router as road_segment_router
 from api.v1.handler.location_ping import router as location_ping_router, vehicle_pings_router
 from api.v1.handler.trip import router as trip_router, vehicle_trips_router
 from api.v1.handler.vehicle_assignment import router as assignment_router
+from api.v1.handler.driver import router as driver_router
 
 from api.v1.dao.parking_area import (
     InvalidParkingAreaGeometryError,
@@ -85,14 +86,10 @@ async def create_parking_area(payload: ParkingAreaCreate, request: Request):
             detail="Malformed geometry or invalid JSON",
         ) from exc
 
+
 # Get a query of all parking areas or a filtered query
 @app.get("/api/v1/parking_areas")
-async def get_parking_areas(
-    name: str | None = None,
-    bbox: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-):
+async def get_parking_areas(name: str | None = None, bbox: str | None = None, limit: int = 20, offset: int = 0):
     if limit < 0:
         raise HTTPException(status_code=400, detail="Limit cannot be negative.")
     if offset < 0:
@@ -118,6 +115,7 @@ async def get_parking_areas(
         return handler.get_all_parking_areas(limit, offset)
     return handler.get_parking_areas(name, bbox_values, limit, offset)
 
+
 # Gets a specific parking area by its ID (ID must be a positive integer)
 @app.get("/api/v1/parking_areas/{parking_area_id}")
 async def get_parking_area(parking_area_id: int):
@@ -126,6 +124,7 @@ async def get_parking_area(parking_area_id: int):
     else:
         print("parking_area_id is valid")
         return ParkingAreaHandler().get_parking_area_by_id(parking_area_id)
+
 
 # Deletes a specific parking area by its ID (ID must be a positive integer)
 @app.delete("/api/v1/parking_areas/{parking_area_id}")
@@ -136,6 +135,7 @@ async def delete_parking_area(parking_area_id: int):
     else:
         print("parking_area_id is valid")
         return ParkingAreaHandler().delete_parking_area_by_id(parking_area_id)
+
 
 # Edits a parking area by its ID
 @app.put("/api/v1/parking_areas/{parking_area_id}")
@@ -178,6 +178,7 @@ async def update_parking_area(
     finally:
         pool.putconn(connection)
 
+
 @app.exception_handler(RequestValidationError)
 async def parking_area_validation_error(
     request: Request, exc: RequestValidationError
@@ -214,6 +215,7 @@ app.include_router(trip_router)
 app.include_router(vehicle_trips_router)
 app.include_router(assignment_router)
 # app.include_router(parking_area_router)
+app.include_router(driver_router)
 
 
 if __name__ == "__main__":

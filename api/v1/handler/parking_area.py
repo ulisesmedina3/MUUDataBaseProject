@@ -3,11 +3,6 @@ from pydantic import BaseModel, Field
 from psycopg2.pool import ThreadedConnectionPool
 from api.v1.dao.parking_area import ParkingAreaDAO, ParkingAreaCreate, ParkingArea
 
-# from api.v1.dao.parking_area import (
-#     # DuplicateParkingAreaError,
-#     # ParkingAreaReferenceNotFoundError,
-#     # create_parking_area,
-#     get_parking_areas,)
 
 class ParkingAreaHandler:
     def create_parking_area(self, request: Request, payload: ParkingAreaCreate) -> ParkingArea:
@@ -20,9 +15,11 @@ class ParkingAreaHandler:
         finally:
             pool.putconn(conn)
 
+
     def get_all_parking_areas(self, limit: int = 20, offset: int = 0):
         dao = ParkingAreaDAO()
         return dao.get_all_parking_areas(limit, offset)
+
 
     def get_parking_areas(self, name, bbox, limit, offset):
         dao = ParkingAreaDAO()
@@ -43,6 +40,7 @@ class ParkingAreaHandler:
 
         return dao.get_parking_areas(name, bbox, limit, offset)
 
+
     def get_parking_area_by_id(self, parking_area_id: int):
         dao = ParkingAreaDAO()
         result = dao.get_parking_area_by_id(parking_area_id)
@@ -52,6 +50,7 @@ class ParkingAreaHandler:
         else:
             return result
 
+
     def delete_parking_area_by_id(self, parking_area_id: int):
         dao = ParkingAreaDAO()
         result = dao.delete_parking_area_by_id(parking_area_id) # Returns a boolean. True if the data deleted successfully
@@ -60,6 +59,7 @@ class ParkingAreaHandler:
             return {"message": "Parking area deleted successfully", "parking_area_id": parking_area_id}
         else:
             raise HTTPException(status_code=404, detail=f"Parking area with ID {parking_area_id} not found.")
+
 
     def update_parking_area(self, request: Request, parking_area_id: int, payload: ParkingAreaCreate) -> ParkingArea:
             pool = getattr(request.app.state, "pool", None)

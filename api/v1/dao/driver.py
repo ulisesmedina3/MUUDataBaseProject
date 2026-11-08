@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel
+
+
+class Driver(BaseModel):
+    driver_id: int
+    first_name: str | None
+    last_name: str | None
+    license_number: str | None
+    hired_at: datetime | None
+
+
+class DriverNotFoundError(Exception):
+    """Raised when a driver does not exist."""
+
+
+class DriverDAO:
+    @staticmethod
+    def _from_row(row: tuple[Any, ...]) -> Driver:
+        return Driver(
+            driver_id=row[0],
+            first_name=row[1],
+            last_name=row[2],
+            license_number=row[3],
+            hired_at=row[4],
+        )
+
+    @staticmethod
+    def get_drivers(
+        connection: Any,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        license_number: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[Driver], int]:
+        filters: list[str] = []
+        parameters: list[Any] = []
+
+        # Converts all string inputs to lower case and appends them to be filters for the "where clause"
+        if first_name is not None:
+            filters.append("LOWER(first_name) LIKE %s")
+            parameters.append(f"%{first_name.lower()}%")
+
+        if last_name is not None:
+            filters.append("LOWER(last_name) LIKE %s")
+            parameters.append(f"%{last_name.lower()}%")
+
+        if license_number is not None:
+            filters.append("LOWER(license_number) LIKE %s")
+            parameters.append(f"%{license_number.lower()}%")
+
+        # Generates a "where clause" for the query
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+        # Actually does the query to the Postrgesql database
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM driver {where_clause}", parameters)
+            count = cursor.fetchone()[0]
+            cursor.execute(
+                f"""
+                SELECT driver_id, first_name, last_name, license_number, hired_at
+                FROM driver
+                {where_clause}
+                ORDER BY driver_id
+                LIMIT %s OFFSET %s
+                """,
+                [*parameters, limit, offset],
+            )
+            rows = cursor.fetchall()
+
+        return [DriverDAO._from_row(row) for row in rows], count
+
+    @staticmethod
+    def get_driver_by_id(connection: Any, driver_id: int) -> Driver:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT driver_id, first_name, last_name, license_number, hired_at
+                FROM driver
+                WHERE driver_id = %s
+                """,
+                (driver_id,),
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            raise DriverNotFoundError
+        return DriverDAO._from_row(row)
