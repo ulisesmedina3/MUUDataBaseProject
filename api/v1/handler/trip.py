@@ -133,10 +133,10 @@ async def update_trip_route(request: Request, trip_id: str):
     trip_id_value = _integer(trip_id, "trip_id", True)
     try:
         payload = TripUpdate.model_validate(await request.json())
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise HTTPException(400, "Malformed JSON or empty patch payload") from exc
     except ValidationError as exc:
         raise HTTPException(422, "Validation failed") from exc
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(400, "Malformed JSON or empty patch payload") from exc
     data = payload.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(400, "Malformed JSON or empty patch payload")
