@@ -98,11 +98,11 @@ app.include_router(vehicle_trips_router)
 async def create_parking_area(payload: ParkingAreaCreate, request: Request):
     try:
         return ParkingAreaHandler().create_parking_area(request, payload)
-    except InvalidParkingAreaGeometryError as exc:
-        raise HTTPException(
+    except InvalidParkingAreaGeometryError:
+        return JSONResponse(
             status_code=400,
-            detail="Malformed geometry or invalid JSON",
-        ) from exc
+            content={"message": "Malformed geometry or invalid JSON"},
+        )
 
 
 # Get a query of all parking areas or a filtered query
@@ -201,6 +201,12 @@ async def update_parking_area(
 async def api_validation_error(
     request: Request, exc: RequestValidationError
 ):
+    if request.method == "POST" and request.url.path == "/api/v1/parking-areas":
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Malformed geometry or invalid JSON"},
+        )
+
     if request.method == "POST" and request.url.path == "/api/v1/driver":
         error_types = {error["type"] for error in exc.errors()}
         if error_types.intersection(
@@ -227,6 +233,31 @@ async def api_validation_error(
                 content={"message": "Malformed JSON or empty update payload"},
             )
 
+    is_parking_area_put = (
+        request.method == "PUT"
+        and request.url.path.startswith("/api/v1/parking-areas/")
+    )
+    if is_parking_area_put:
+        error_types = {error["type"] for error in exc.errors()}
+        if error_types.intersection(
+            {"json_invalid", "model_type", "model_attributes_type"}
+        ):
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Malformed JSON or invalid update payload"},
+            )
+        messages = "; ".join(
+            "Capacity must be greater than 0"
+            if error["loc"] == ("body", "capacity")
+            and error["type"] == "greater_than"
+            else error["msg"]
+            for error in exc.errors()
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"message": messages},
+        )
+
     if request.url.path == "/api/v1/driver" or request.url.path.startswith(
         "/api/v1/driver/"
     ):
@@ -238,13 +269,9 @@ async def api_validation_error(
 
     is_parking_area_post = (
         request.method == "POST"
-        and request.url.path == "/api/v1/parking_areas"
+        and request.url.path == "/api/v1/parking-areas"
     )
-    is_parking_area_put = (
-        request.method == "PUT"
-        and request.url.path.startswith("/api/v1/parking_areas/")
-    )
-    if is_parking_area_post or is_parking_area_put:
+    if is_parking_area_post:
         messages = "; ".join(
             "Capacity must be greater than 0"
             if error["loc"] == ("body", "capacity")
@@ -264,6 +291,15 @@ async def api_validation_error(
 async def api_http_exception(request: Request, exc: StarletteHTTPException):
     if request.url.path == "/api/v1/driver" or request.url.path.startswith(
         "/api/v1/driver/"
+    ):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"message": exc.detail},
+            headers=exc.headers,
+        )
+
+    if request.method == "PUT" and request.url.path.startswith(
+        "/api/v1/parking-areas/"
     ):
         return JSONResponse(
             status_code=exc.status_code,
