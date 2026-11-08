@@ -81,8 +81,14 @@ async def get_parking_area(parking_area_id: int):
         print("parking_area_id is valid")
         return ParkingAreaHandler().get_parking_area_by_id(parking_area_id)
 
-# @app.delete("/api/v1/parking_areas/{parking_area_id}")
-# async def delete_parking_area(parking_area_id: int):
+@app.delete("/api/v1/parking_areas/{parking_area_id}")
+async def delete_parking_area(parking_area_id: int):
+    if parking_area_id < 1:
+        print("parking_area_id is less than 1")
+        raise HTTPException(status_code=400, detail="Invalid parking_area_id. Must be a positive integer.")
+    else:
+        print("parking_area_id is valid")
+        return ParkingAreaHandler().delete_parking_area_by_id(parking_area_id)
 
 app.include_router(vehicle_router)
 app.include_router(road_segment_router)
