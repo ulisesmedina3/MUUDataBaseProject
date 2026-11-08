@@ -13,6 +13,7 @@ from api.v1.handler.vehicle import router as vehicle_router
 from api.v1.handler.road_segment import router as road_segment_router
 from api.v1.handler.location_ping import router as location_ping_router
 from api.v1.handler.trip import router as trip_router, vehicle_trips_router
+from api.v1.handler.vehicle_assignment import router as assignment_router
 
 from api.v1.dao.parking_area import ParkingAreaDAO
 from api.v1.handler.parking_area import ParkingAreaHandler
@@ -89,6 +90,7 @@ app.include_router(road_segment_router)
 app.include_router(location_ping_router)
 app.include_router(trip_router)
 app.include_router(vehicle_trips_router)
+app.include_router(assignment_router)
 # app.include_router(parking_area_router)
 
 
