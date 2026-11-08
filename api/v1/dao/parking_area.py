@@ -71,3 +71,19 @@ class ParkingAreaDAO():
         self.pool.putconn(conn) # Return the connection to the pool
         print("Does exist")
         return parking_area
+    
+    def delete_parking_area_by_id(self, parking_area_id: int) -> bool:
+        conn = self.pool.getconn() # Get a connection from the pool
+        cursor = conn.cursor() # Create a cursor to execute the query
+        query = """
+                DELETE FROM parking_area
+                WHERE parking_area_id = %s
+                """
+        cursor.execute(query, (parking_area_id,)) # Execute the query and stores the result in the cursor
+        rows_affected = cursor.rowcount # Get the number of rows affected by the delete operation
+        
+        conn.commit() # Commit the transaction to make the deletion permanent
+        cursor.close() # Close the cursor
+        self.pool.putconn(conn) # Return the connection to the pool
+        print("Deleted")
+        return rows_affected == 1

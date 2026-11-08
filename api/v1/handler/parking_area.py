@@ -22,3 +22,12 @@ class ParkingAreaHandler:
             raise HTTPException(status_code=404, detail=f"Parking area with ID {parking_area_id} not found.")
         else:
             return result
+
+    def delete_parking_area_by_id(self, parking_area_id: int):
+        dao = ParkingAreaDAO()
+        result = dao.delete_parking_area_by_id(parking_area_id) # Returns a boolean. True if the data deleted successfully
+
+        if result:
+            return {"message": "Parking area deleted successfully", "parking_area_id": parking_area_id}
+        else:
+            raise HTTPException(status_code=404, detail=f"Parking area with ID {parking_area_id} not found.")
