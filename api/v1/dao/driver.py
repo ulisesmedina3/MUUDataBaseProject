@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+import psycopg2
 from pydantic import BaseModel
 
 
@@ -16,6 +17,10 @@ class Driver(BaseModel):
 
 class DriverNotFoundError(Exception):
     """Raised when a driver does not exist."""
+
+
+class DriverDeleteConflictError(Exception):
+    """Raised when a driver is referenced by another record."""
 
 
 class DriverDAO:
@@ -91,3 +96,27 @@ class DriverDAO:
         if row is None:
             raise DriverNotFoundError
         return DriverDAO._from_row(row)
+
+    @staticmethod
+    def delete_driver(connection: Any, driver_id: int) -> dict[str, Any]:
+        try:
+            with connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM driver
+                        WHERE driver_id = %s
+                        RETURNING driver_id
+                        """,
+                        (driver_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        raise DriverNotFoundError
+        except psycopg2.errors.ForeignKeyViolation as exc:
+            raise DriverDeleteConflictError from exc
+
+        return {
+            "message": "Driver deleted successfully.",
+            "driver_id": row[0],
+        }

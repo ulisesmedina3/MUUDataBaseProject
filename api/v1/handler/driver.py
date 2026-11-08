@@ -5,7 +5,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from psycopg2.pool import ThreadedConnectionPool
 
-from api.v1.dao.driver import DriverDAO, DriverNotFoundError
+from api.v1.dao.driver import (
+    DriverDAO,
+    DriverDeleteConflictError,
+    DriverNotFoundError,
+)
 
 router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
 
@@ -18,7 +22,7 @@ def _connection(request: Request) -> tuple[ThreadedConnectionPool, Any]:
 
 # Gets a query of the driver table
 @router.get("", status_code=200)
-def get_drivers(
+async def get_drivers(
     request: Request,
     first_name: str | None = None,
     last_name: str | None = None,
@@ -58,7 +62,7 @@ def get_drivers(
 
 # Gets a driver by its ID
 @router.get("/{driver_id}", status_code=200)
-def get_driver(request: Request, driver_id: int):
+async def get_driver(request: Request, driver_id: int):
     if driver_id <= 0:
         raise HTTPException(status_code=400, detail="driver_id must be a positive integer")
 
@@ -68,5 +72,23 @@ def get_driver(request: Request, driver_id: int):
             return DriverDAO.get_driver_by_id(connection, driver_id)
         except DriverNotFoundError as exc:
             raise HTTPException(status_code=404, detail="driver_id does not exist") from exc
+    finally:
+        pool.putconn(connection)
+
+# Deletes a driver via their ID
+@router.delete("/{driver_id}", status_code=200)
+async def delete_driver(request: Request, driver_id: int):
+    if driver_id <= 0:
+        raise HTTPException(status_code=400, detail="driver_id must be a positive integer")
+
+    pool, connection = _connection(request)
+    try:
+        try:
+            return DriverDAO.delete_driver(connection, driver_id)
+        except DriverNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="driver_id does not exist") from exc
+        except DriverDeleteConflictError as exc:
+            raise HTTPException(status_code=409, detail="Driver is referenced and cannot be deleted",
+            ) from exc
     finally:
         pool.putconn(connection)
