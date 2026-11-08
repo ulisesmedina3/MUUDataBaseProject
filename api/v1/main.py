@@ -15,7 +15,13 @@ from api.v1.handler.location_ping import router as location_ping_router, vehicle
 from api.v1.handler.trip import router as trip_router, vehicle_trips_router
 from api.v1.handler.vehicle_assignment import router as assignment_router
 
-from api.v1.dao.parking_area import ParkingAreaCreate
+from api.v1.dao.parking_area import (
+    InvalidParkingAreaGeometryError,
+    ParkingAreaDAO,
+    ParkingAreaCreate,
+    ParkingAreaNotFoundError,
+    ParkingAreaUpdate,
+)
 from api.v1.handler.parking_area import ParkingAreaHandler
 
 #------------------------------------
@@ -110,6 +116,47 @@ async def delete_parking_area(parking_area_id: int):
     else:
         print("parking_area_id is valid")
         return ParkingAreaHandler().delete_parking_area_by_id(parking_area_id)
+
+# Edits a parking area by its ID
+@app.put("/api/v1/parking_areas/{parking_area_id}")
+def update_parking_area(
+    parking_area_id: int, payload: ParkingAreaUpdate, request: Request
+):
+    if parking_area_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="parking_area_id must be a positive integer",
+        )
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one field to update.",
+        )
+
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database connection unavailable")
+    connection = pool.getconn()
+    try:
+        return ParkingAreaDAO.update_parking_area(
+            connection, parking_area_id, updates
+        )
+    except ParkingAreaNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Parking area with ID {parking_area_id} not found.",
+        ) from exc
+    except InvalidParkingAreaGeometryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="geom must be a valid GeoJSON Polygon.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        pool.putconn(connection)
 
 app.include_router(vehicle_router)
 app.include_router(road_segment_router)

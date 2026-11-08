@@ -18,12 +18,27 @@ class ParkingArea(BaseModel):
 
 class GeoJSONPolygon(BaseModel):
     type: Literal["Polygon"]
-    coordinates: list[list[list[float]]]
+    coordinates: list[list[tuple[float, float]]]
 
 class ParkingAreaCreate(BaseModel):
     name: str = Field(min_length=1)
     capacity: int = Field(ge=0)
     geom: GeoJSONPolygon
+
+
+class ParkingAreaUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    capacity: int | None = Field(default=None, ge=0)
+    geom: GeoJSONPolygon | None = None
+
+
+class ParkingAreaNotFoundError(Exception):
+    """Raised when a parking area to update does not exist."""
+
+
+class InvalidParkingAreaGeometryError(Exception):
+    """Raised when the supplied geometry is not a valid polygon."""
+
 
 class ParkingAreaDAO():
     def __init__(self):
@@ -57,6 +72,93 @@ class ParkingAreaDAO():
                 row = cursor.fetchone() # Fetches the first row of the result set
 
         return ParkingArea(parking_area_id=row[0],name=row[1],capacity=row[2],geom=row[3],created_at=row[4])
+
+    @staticmethod
+    def update_parking_area(
+        conn: Any, parking_area_id: int, data: dict[str, Any]
+    ) -> ParkingArea:
+        if not data:
+            raise ValueError("At least one field must be provided")
+
+        updates: list[str] = []
+        parameters: list[Any] = []
+
+        if "name" in data:
+            if data["name"] is None:
+                raise ValueError("name cannot be null")
+            updates.append("name = %s")
+            parameters.append(data["name"])
+
+        if "capacity" in data:
+            if data["capacity"] is None:
+                raise ValueError("capacity cannot be null")
+            updates.append("capacity = %s")
+            parameters.append(data["capacity"])
+
+        if "geom" in data:
+            if data["geom"] is None:
+                raise ValueError("geom cannot be null")
+            geometry = data["geom"]
+            if isinstance(geometry, GeoJSONPolygon):
+                geometry = geometry.model_dump()
+            geometry_json = json.dumps(geometry)
+            updates.append(
+                "geom = ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326)"
+            )
+            parameters.append(geometry_json)
+        else:
+            geometry_json = None
+
+        try:
+            with conn:
+                with conn.cursor() as cursor:
+                    if geometry_json is not None:
+                        cursor.execute(
+                            """
+                            SELECT
+                                ST_IsValid(g)
+                                AND NOT ST_IsEmpty(g)
+                                AND ST_GeometryType(g) = 'ST_Polygon'
+                            FROM (
+                                SELECT ST_SetSRID(
+                                    ST_GeomFromGeoJSON(%s), 4326
+                                ) AS g
+                            ) AS geometry_check
+                            """,
+                            (geometry_json,),
+                        )
+                        if cursor.fetchone()[0] is not True:
+                            raise InvalidParkingAreaGeometryError
+
+                    parameters.append(parking_area_id)
+                    cursor.execute(
+                        f"""
+                        UPDATE parking_area
+                        SET {", ".join(updates)}
+                        WHERE parking_area_id = %s
+                        RETURNING parking_area_id, name, capacity,
+                                  ST_AsText(geom), created_at
+                        """,
+                        parameters,
+                    )
+                    row = cursor.fetchone()
+
+                    if row is None:
+                        raise ParkingAreaNotFoundError
+        except (
+            psycopg2.errors.InvalidParameterValue,
+            psycopg2.errors.InvalidTextRepresentation,
+            psycopg2.errors.InternalError_,
+        ) as exc:
+            raise InvalidParkingAreaGeometryError from exc
+
+        return ParkingArea(
+            parking_area_id=row[0],
+            name=row[1],
+            capacity=row[2],
+            geom=row[3],
+            created_at=row[4],
+        )
 
     # Gets all of the parking areas in the database
     def get_all_parking_areas(self) -> list[ParkingArea]:

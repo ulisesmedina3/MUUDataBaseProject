@@ -64,3 +64,15 @@ class ParkingAreaHandler:
             return {"message": "Parking area deleted successfully", "parking_area_id": parking_area_id}
         else:
             raise HTTPException(status_code=404, detail=f"Parking area with ID {parking_area_id} not found.")
+
+    def update_parking_area(self, request: Request, parking_area_id: int, payload: ParkingAreaCreate) -> ParkingArea:
+            pool = getattr(request.app.state, "pool", None)
+            if pool is None:
+                raise HTTPException(status_code=503, detail="Database connection unavailable")
+            conn = pool.getconn()
+            try:
+                return ParkingAreaDAO.update_parking_area(
+                    conn, parking_area_id, payload
+                )
+            finally:
+                pool.putconn(conn)
