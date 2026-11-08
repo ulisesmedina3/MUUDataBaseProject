@@ -14,7 +14,7 @@ from api.v1.dao.driver import (
     DriverNotFoundError,
 )
 
-router = APIRouter(prefix="/api/v1/driver", tags=["driver"])
+router = APIRouter(prefix="/api/v1/drivers", tags=["driver"])
 
 
 class DriverCreate(BaseModel):

@@ -66,7 +66,12 @@ def api_info():
         "message": "MUU Vehicle API is running",
         "endpoints": {
             "vehicles": "/api/v1/vehicles",
-            "parking_areas": "/api/v1/parking_areas",
+            "road-segments": "/api/v1/road-segments",
+            "parking-areas": "/api/v1/parking_areas",
+            "location-pings": "/api/v1/location-pings",
+            "trips": "/api/v1/trips",
+            "drivers": "/api/v1/drivers",
+            "vehicle-assignments": "/api/v1/vehicle-assignments",
             "health": "/health",
         },
     }
@@ -75,12 +80,21 @@ def api_info():
 def health_check():
     return {"status": "ok"}
 
+app.include_router(vehicle_router)
+app.include_router(road_segment_router)
+# app.include_router(parking_area_router)
+app.include_router(vehicle_pings_router)
+app.include_router(assignment_router)
+app.include_router(location_ping_router)
+app.include_router(trip_router)
+app.include_router(driver_router)
+app.include_router(vehicle_trips_router)
 
 # ==========================
 # 5.3 Parking Area
 # ==========================
 
-@app.post("/api/v1/parking_areas", status_code=201)
+@app.post("/api/v1/parking-areas", status_code=201)
 async def create_parking_area(payload: ParkingAreaCreate, request: Request):
     try:
         return ParkingAreaHandler().create_parking_area(request, payload)
@@ -92,7 +106,7 @@ async def create_parking_area(payload: ParkingAreaCreate, request: Request):
 
 
 # Get a query of all parking areas or a filtered query
-@app.get("/api/v1/parking_areas")
+@app.get("/api/v1/parking-areas")
 async def get_parking_areas(name: str | None = None, bbox: str | None = None, limit: int = 20, offset: int = 0):
     if limit < 0:
         raise HTTPException(status_code=400, detail="Limit cannot be negative.")
@@ -121,7 +135,7 @@ async def get_parking_areas(name: str | None = None, bbox: str | None = None, li
 
 
 # Gets a specific parking area by its ID (ID must be a positive integer)
-@app.get("/api/v1/parking_areas/{parking_area_id}")
+@app.get("/api/v1/parking-areas/{parking_area_id}")
 async def get_parking_area(parking_area_id: int):
     if parking_area_id < 1:
         raise HTTPException(status_code=400, detail="Invalid parking_area_id. Must be a positive integer.")
@@ -131,7 +145,7 @@ async def get_parking_area(parking_area_id: int):
 
 
 # Deletes a specific parking area by its ID (ID must be a positive integer)
-@app.delete("/api/v1/parking_areas/{parking_area_id}")
+@app.delete("/api/v1/parking-areas/{parking_area_id}")
 async def delete_parking_area(parking_area_id: int):
     if parking_area_id < 1:
         print("parking_area_id is less than 1")
@@ -142,7 +156,7 @@ async def delete_parking_area(parking_area_id: int):
 
 
 # Edits a parking area by its ID
-@app.put("/api/v1/parking_areas/{parking_area_id}")
+@app.put("/api/v1/parking-areas/{parking_area_id}")
 async def update_parking_area(
     parking_area_id: int, payload: ParkingAreaUpdate, request: Request
 ):
@@ -258,18 +272,6 @@ async def api_http_exception(request: Request, exc: StarletteHTTPException):
         )
 
     return await http_exception_handler(request, exc)
-
-
-app.include_router(vehicle_router)
-app.include_router(road_segment_router)
-app.include_router(location_ping_router)
-app.include_router(vehicle_pings_router)
-app.include_router(trip_router)
-app.include_router(vehicle_trips_router)
-app.include_router(assignment_router)
-# app.include_router(parking_area_router)
-app.include_router(driver_router)
-
 
 if __name__ == "__main__":
     uvicorn.run(
