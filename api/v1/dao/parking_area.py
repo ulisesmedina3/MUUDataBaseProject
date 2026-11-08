@@ -2,11 +2,9 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import json
-from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
 import psycopg2
 from datetime import datetime
 from pydantic import BaseModel, Field
-from psycopg2.pool import SimpleConnectionPool
 
 from api.v1.dao.time_format import format_timestamp
 
@@ -42,10 +40,7 @@ class InvalidParkingAreaGeometryError(Exception):
     """Raised when the supplied geometry is not a valid polygon."""
 
 
-class ParkingAreaDAO():
-    def __init__(self):
-        self.pool = SimpleConnectionPool(POOL_CONFIG["minconn"], POOL_CONFIG["maxconn"], **PG_DB_CONFIG)
-    
+class ParkingAreaDAO:
     @staticmethod
     def create_parking_area(conn: Any, payload: ParkingAreaCreate) -> ParkingArea:
         geometry_json = json.dumps(payload.geom.model_dump())
@@ -206,46 +201,9 @@ class ParkingAreaDAO():
         )
 
     # Gets all of the parking areas in the database
-    def get_all_parking_areas(
-        self, limit: int = 20, offset: int = 0
-    ) -> dict[str, Any]:
-        conn = self.pool.getconn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM parking_area")
-                count = cursor.fetchone()[0]
-                cursor.execute(
-                    """
-                    SELECT parking_area_id, name, capacity, created_at
-                    FROM parking_area
-                    ORDER BY parking_area_id
-                    LIMIT %s OFFSET %s
-                    """,
-                    (limit, offset),
-                )
-                rows = cursor.fetchall()
-        finally:
-            self.pool.putconn(conn)
-
-        return {
-            "items": [
-                {
-                    "parking_area_id": row[0],
-                    "name": row[1],
-                    "capacity": row[2],
-                    "created_at": (
-                        format_timestamp(row[3]) if row[3] is not None else None
-                    ),
-                }
-                for row in rows
-            ],
-            "limit": limit,
-            "offset": offset,
-            "count": count,
-        }
-
+    @staticmethod
     def get_parking_areas(
-        self,
+        conn: Any,
         name: str | None,
         bbox: list[float] | None,
         limit: int,
@@ -265,27 +223,23 @@ class ParkingAreaDAO():
             parameters.extend(bbox)
 
         where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-        conn = self.pool.getconn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT COUNT(*) FROM parking_area {where_clause}",
-                    parameters,
-                )
-                count = cursor.fetchone()[0]
-                cursor.execute(
-                    f"""
-                    SELECT parking_area_id, name, capacity, created_at
-                    FROM parking_area
-                    {where_clause}
-                    ORDER BY parking_area_id
-                    LIMIT %s OFFSET %s
-                    """,
-                    [*parameters, limit, offset],
-                )
-                rows = cursor.fetchall()
-        finally:
-            self.pool.putconn(conn)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM parking_area {where_clause}",
+                parameters,
+            )
+            count = cursor.fetchone()[0]
+            cursor.execute(
+                f"""
+                SELECT parking_area_id, name, capacity, created_at
+                FROM parking_area
+                {where_clause}
+                ORDER BY parking_area_id
+                LIMIT %s OFFSET %s
+                """,
+                [*parameters, limit, offset],
+            )
+            rows = cursor.fetchall()
 
         return {
             "items": [
@@ -303,49 +257,42 @@ class ParkingAreaDAO():
             "offset": offset,
             "count": count,
         }
-    
-    def get_parking_area_by_id(self, parking_area_id: int) -> ParkingArea | None:
-        conn = self.pool.getconn() # Get a connection from the pool
-        cursor = conn.cursor() # Create a cursor to execute the query
-        query = """
+
+    @staticmethod
+    def get_parking_area_by_id(
+        conn: Any, parking_area_id: int
+    ) -> ParkingArea | None:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
                 SELECT parking_area_id, name, capacity, ST_AsText(geom), created_at
                 FROM parking_area
                 WHERE parking_area_id = %s
-                """
-        cursor.execute(query, (parking_area_id,)) # Execute the query and stores the result in the cursor
-        row = cursor.fetchone() # Fetches the first row of the result set
+                """,
+                (parking_area_id,),
+            )
+            row = cursor.fetchone()
 
         if row is None:
-            cursor.close() # Close the cursor
-            self.pool.putconn(conn) # Return the connection to the pool
-            print("Does not exist")
             return None
-        
-        parking_area = ParkingArea(
+        return ParkingArea(
             parking_area_id=row[0],
             name=row[1],
             capacity=row[2],
             geom=row[3],
-            created_at=row[4]
+            created_at=row[4],
         )
-        
-        cursor.close() # Close the cursor
-        self.pool.putconn(conn) # Return the connection to the pool
-        print("Does exist")
-        return parking_area
-    
-    def delete_parking_area_by_id(self, parking_area_id: int) -> bool:
-        conn = self.pool.getconn() # Get a connection from the pool
-        cursor = conn.cursor() # Create a cursor to execute the query
-        query = """
-                DELETE FROM parking_area
-                WHERE parking_area_id = %s
-                """
-        cursor.execute(query, (parking_area_id,)) # Execute the query and stores the result in the cursor
-        rows_affected = cursor.rowcount # Get the number of rows affected by the delete operation
-        
-        conn.commit() # Commit the transaction to make the deletion permanent
-        cursor.close() # Close the cursor
-        self.pool.putconn(conn) # Return the connection to the pool
-        print("Deleted")
-        return rows_affected == 1
+
+    @staticmethod
+    def delete_parking_area_by_id(conn: Any, parking_area_id: int) -> bool:
+        with conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM parking_area
+                    WHERE parking_area_id = %s
+                    RETURNING parking_area_id
+                    """,
+                    (parking_area_id,),
+                )
+                return cursor.fetchone() is not None
