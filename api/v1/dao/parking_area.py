@@ -55,7 +55,7 @@ class ParkingAreaDAO():
         if name and bbox:
             query += """
                     FROM parking_area
-                    WHERE name = %s AND geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                    WHERE name = %s AND ST_INTERSECTS(geom, ST_MAKEENVELOPE(%s, %s, %s, %s, 4326))
                     ORDER BY parking_area_id
                     LIMIT %s OFFSET %s
                     """
@@ -71,7 +71,7 @@ class ParkingAreaDAO():
         elif not name and bbox:
             query += """
                     FROM parking_area
-                    WHERE geom && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                    WHERE ST_INTERSECTS(geom, ST_MAKEENVELOPE(%s, %s, %s, %s, 4326))
                     ORDER BY parking_area_id
                     LIMIT %s OFFSET %s
                     """

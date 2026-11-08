@@ -65,13 +65,23 @@ def health_check():
 
 # Get a query of all parking areas or a filtered query
 @app.get("/api/v1/parking_areas")
-async def get_parking_areas(name: str | None = None, bbox: list[int] | None = None, limit: int | None = None, offset: int | None = None):
-    if name is None and bbox is None and limit is None and offset is None:
+async def get_parking_areas(name: str | None = None, bbox: str | None = None, limit: int | None = None, offset: int | None = None):
+    bbox_list = bbox.split(",") if bbox else None  # Converts the string into a list of floats
+
+    if name is None and bbox is None and limit is None and offset is None:  # Runs if no filters are entered
         return ParkingAreaHandler().get_all_parking_areas()
-    elif bbox is not None and len(bbox) != 4:
+    
+    elif bbox is not None and len(bbox_list) != 4:  # Check is the bbox has 4 inputs
         raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure that the bbox list contains exactly 4 values.")
-    else:
-        return ParkingAreaHandler().get_parking_areas(name, bbox, limit, offset)
+    
+    else:  # Runs when any filteres are entered
+        if bbox_list is not None:  # Converts the strings into floats and checks if they are valid numbers
+            for i in range(len(bbox_list)):
+                try:
+                    bbox_list[i] = float(bbox_list[i])
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid bounding box coordinate: {bbox_list[i]}. Ensure that all values are valid numbers.")
+        return ParkingAreaHandler().get_parking_areas(name, bbox_list, limit, offset)
 
 # Gets a specific parking area by its ID (ID must be a positive integer)
 @app.get("/api/v1/parking_areas/{parking_area_id}")
