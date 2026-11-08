@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from psycopg2.pool import ThreadedConnectionPool
 
 from api.v1.config.dbconfig import PG_DB_CONFIG, POOL_CONFIG
@@ -52,7 +55,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
 @app.get("/")
 def api_info():
     return {
@@ -73,35 +75,53 @@ def health_check():
 # 5.3 Parking Area
 # ==========================
 
-@app.post("/api/v1/parking_areas")
+@app.post("/api/v1/parking_areas", status_code=201)
 async def create_parking_area(payload: ParkingAreaCreate, request: Request):
-    return ParkingAreaHandler().create_parking_area(request, payload)
+    try:
+        return ParkingAreaHandler().create_parking_area(request, payload)
+    except InvalidParkingAreaGeometryError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Malformed geometry or invalid JSON",
+        ) from exc
 
 # Get a query of all parking areas or a filtered query
 @app.get("/api/v1/parking_areas")
-async def get_parking_areas(name: str | None = None, bbox: str | None = None, limit: int | None = None, offset: int | None = None):
-    bbox_list = bbox.split(",") if bbox else None  # Converts the string into a list of floats
+async def get_parking_areas(
+    name: str | None = None,
+    bbox: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    if limit < 0:
+        raise HTTPException(status_code=400, detail="Limit cannot be negative.")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="Offset cannot be negative.")
 
-    if name is None and bbox is None and limit is None and offset is None:  # Runs if no filters are entered
-        return ParkingAreaHandler().get_all_parking_areas()
-    
-    elif bbox is not None and len(bbox_list) != 4:  # Check is the bbox has 4 inputs
-        raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure that the bbox list contains exactly 4 values.")
-    
-    else:  # Runs when any filteres are entered
-        if bbox_list is not None:  # Converts the strings into floats and checks if they are valid numbers
-            for i in range(len(bbox_list)):
-                try:
-                    bbox_list[i] = float(bbox_list[i])
-                except ValueError:
-                    raise HTTPException(status_code=400, detail=f"Invalid bounding box coordinate: {bbox_list[i]}. Ensure that all values are valid numbers.")
-        return ParkingAreaHandler().get_parking_areas(name, bbox_list, limit, offset)
+    bbox_values: list[float] | None = None
+    if bbox is not None:
+        try:
+            bbox_values = [float(value) for value in bbox.split(",")]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid bounding box coordinates.",
+            ) from exc
+        if len(bbox_values) != 4:
+            raise HTTPException(
+                status_code=400,
+                detail="Bounding box must contain exactly four coordinates.",
+            )
+
+    handler = ParkingAreaHandler()
+    if name is None and bbox_values is None:
+        return handler.get_all_parking_areas(limit, offset)
+    return handler.get_parking_areas(name, bbox_values, limit, offset)
 
 # Gets a specific parking area by its ID (ID must be a positive integer)
 @app.get("/api/v1/parking_areas/{parking_area_id}")
 async def get_parking_area(parking_area_id: int):
     if parking_area_id < 1:
-        print("parking_area_id is less than 1")
         raise HTTPException(status_code=400, detail="Invalid parking_area_id. Must be a positive integer.")
     else:
         print("parking_area_id is valid")
@@ -119,7 +139,7 @@ async def delete_parking_area(parking_area_id: int):
 
 # Edits a parking area by its ID
 @app.put("/api/v1/parking_areas/{parking_area_id}")
-def update_parking_area(
+async def update_parking_area(
     parking_area_id: int, payload: ParkingAreaUpdate, request: Request
 ):
     if parking_area_id <= 0:
@@ -157,6 +177,34 @@ def update_parking_area(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         pool.putconn(connection)
+
+@app.exception_handler(RequestValidationError)
+async def parking_area_validation_error(
+    request: Request, exc: RequestValidationError
+):
+    is_parking_area_post = (
+        request.method == "POST"
+        and request.url.path == "/api/v1/parking_areas"
+    )
+    is_parking_area_put = (
+        request.method == "PUT"
+        and request.url.path.startswith("/api/v1/parking_areas/")
+    )
+    if is_parking_area_post or is_parking_area_put:
+        messages = "; ".join(
+            "Capacity must be greater than 0"
+            if error["loc"] == ("body", "capacity")
+            and error["type"] == "greater_than"
+            else error["msg"]
+            for error in exc.errors()
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": messages},
+        )
+
+    return await request_validation_exception_handler(request, exc)
+
 
 app.include_router(vehicle_router)
 app.include_router(road_segment_router)

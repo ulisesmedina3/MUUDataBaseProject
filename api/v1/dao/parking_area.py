@@ -8,11 +8,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from psycopg2.pool import SimpleConnectionPool
 
+from api.v1.dao.time_format import format_timestamp
+
 # These are the attributes of the ParkingArea table in the database
 class ParkingArea(BaseModel):
     parking_area_id: int
     name: str
-    capacity: int
+    capacity: int | None
     geom: str
     created_at: datetime
 
@@ -21,14 +23,14 @@ class GeoJSONPolygon(BaseModel):
     coordinates: list[list[tuple[float, float]]]
 
 class ParkingAreaCreate(BaseModel):
-    name: str = Field(min_length=1)
-    capacity: int = Field(ge=0)
+    name: str = Field(min_length=1, strip_whitespace=True)
+    capacity: int | None = Field(default=None, ge=0)
     geom: GeoJSONPolygon
 
 
 class ParkingAreaUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
-    capacity: int | None = Field(default=None, ge=0)
+    capacity: int | None = Field(default=None, gt=0)
     geom: GeoJSONPolygon | None = None
 
 
@@ -46,32 +48,73 @@ class ParkingAreaDAO():
     
     @staticmethod
     def create_parking_area(conn: Any, payload: ParkingAreaCreate) -> ParkingArea:
-        with conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT pg_advisory_xact_lock(hashtext(%s))", ('parking_area.parking_area_id',),
-                )
-                cursor.execute(
-                    "SELECT COALESCE(MAX(parking_area_id), 0) + 1 FROM parking_area"
-                )
-                parking_area_id = cursor.fetchone()[0]
+        geometry_json = json.dumps(payload.geom.model_dump())
 
-                cursor.execute(
-                    """
-                        INSERT INTO parking_area (parking_area_id, name, capacity, geom, created_at)
-                        VALUES (%s, %s, %s, ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), CURRENT_TIMESTAMP)
-                        RETURNING parking_area_id, name, capacity, ST_AsText(geom), created_at
-                    """,
-                    (
-                        parking_area_id,
-                        payload.name,
-                        payload.capacity,
-                        json.dumps(payload.geom.model_dump())
-                    ),
-                )
-                row = cursor.fetchone() # Fetches the first row of the result set
+        try:
+            with conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            ST_IsValid(g)
+                            AND NOT ST_IsEmpty(g)
+                            AND ST_GeometryType(g) = 'ST_Polygon'
+                        FROM (
+                            SELECT ST_SetSRID(
+                                ST_GeomFromGeoJSON(%s), 4326
+                            ) AS g
+                        ) AS geometry_check
+                        """,
+                        (geometry_json,),
+                    )
+                    if cursor.fetchone()[0] is not True:
+                        raise InvalidParkingAreaGeometryError
 
-        return ParkingArea(parking_area_id=row[0],name=row[1],capacity=row[2],geom=row[3],created_at=row[4])
+                    cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                        ("parking_area.parking_area_id",),
+                    )
+                    cursor.execute(
+                        "SELECT COALESCE(MAX(parking_area_id), 0) + 1 "
+                        "FROM parking_area"
+                    )
+                    parking_area_id = cursor.fetchone()[0]
+
+                    cursor.execute(
+                        """
+                        INSERT INTO parking_area (
+                            parking_area_id, name, capacity, geom, created_at
+                        )
+                        VALUES (
+                            %s, %s, %s,
+                            ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326),
+                            CURRENT_TIMESTAMP
+                        )
+                        RETURNING parking_area_id, name, capacity,
+                                  ST_AsText(geom), created_at
+                        """,
+                        (
+                            parking_area_id,
+                            payload.name,
+                            payload.capacity,
+                            geometry_json,
+                        ),
+                    )
+                    row = cursor.fetchone()
+        except (
+            psycopg2.errors.InvalidParameterValue,
+            psycopg2.errors.InvalidTextRepresentation,
+            psycopg2.errors.InternalError_,
+        ) as exc:
+            raise InvalidParkingAreaGeometryError from exc
+
+        return ParkingArea(
+            parking_area_id=row[0],
+            name=row[1],
+            capacity=row[2],
+            geom=row[3],
+            created_at=row[4],
+        )
 
     @staticmethod
     def update_parking_area(
@@ -92,6 +135,8 @@ class ParkingAreaDAO():
         if "capacity" in data:
             if data["capacity"] is None:
                 raise ValueError("capacity cannot be null")
+            if data["capacity"] <= 0:
+                raise ValueError("capacity must be greater than 0")
             updates.append("capacity = %s")
             parameters.append(data["capacity"])
 
@@ -161,83 +206,103 @@ class ParkingAreaDAO():
         )
 
     # Gets all of the parking areas in the database
-    def get_all_parking_areas(self) -> list[ParkingArea]:
-        conn = self.pool.getconn() # Get a connection from the pool
-        cursor = conn.cursor() # Create a cursor to execute the query
-        query = """
-                SELECT parking_area_id, name, capacity, ST_AsText(geom), created_at
-                FROM parking_area
-                """
-        cursor.execute(query) # Execute the query and stores the result in the cursor
-        result : list[ParkingArea] = [] # Create a list to hold the results
-        for row in cursor: # Loops through each row of the table queried by the cursor and creates a ParkingArea object for each row and appends it to the result list
-            result.append(ParkingArea(
-                parking_area_id=row[0],
-                name=row[1],
-                capacity=row[2],
-                geom=row[3],
-                created_at=row[4]
-            ))
-        
-        cursor.close() # Close the cursor
-        self.pool.putconn(conn) # Return the connection to the pool
-        return result, len(result)
-
-    def get_parking_areas(self, name: str, bbox: list[int], limit: int, offset: int) -> list[ParkingArea]:
-        print(f"Input: name={name}, bbox={bbox}, limit={limit}, offset={offset}")
-
-        conn = self.pool.getconn() # Get a connection from the pool
-        cursor = conn.cursor() # Create a cursor to execute the query
-        query = """
-                SELECT parking_area_id, name, capacity, ST_AsText(geom), created_at
-                """
-
-        # If name and bbox are provided, the query will adjusted accordingly
-        if name and bbox:
-            query += """
-                    FROM parking_area
-                    WHERE name = %s AND ST_INTERSECTS(geom, ST_MAKEENVELOPE(%s, %s, %s, %s, 4326))
-                    ORDER BY parking_area_id
-                    LIMIT %s OFFSET %s
+    def get_all_parking_areas(
+        self, limit: int = 20, offset: int = 0
+    ) -> dict[str, Any]:
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM parking_area")
+                count = cursor.fetchone()[0]
+                cursor.execute(
                     """
-            cursor.execute(query, (f"{name}", bbox[0], bbox[1], bbox[2], bbox[3], limit, offset))
-        elif name and not bbox:
-            query += """
-                    FROM parking_area
-                    WHERE name = %s
-                    ORDER BY parking_area_id
-                    LIMIT %s OFFSET %s
-                    """
-            cursor.execute(query, (f"{name}", limit, offset))
-        elif not name and bbox:
-            query += """
-                    FROM parking_area
-                    WHERE ST_INTERSECTS(geom, ST_MAKEENVELOPE(%s, %s, %s, %s, 4326))
-                    ORDER BY parking_area_id
-                    LIMIT %s OFFSET %s
-                    """
-            cursor.execute(query, (bbox[0], bbox[1], bbox[2], bbox[3], limit, offset))
-        else:
-            query += """
+                    SELECT parking_area_id, name, capacity, created_at
                     FROM parking_area
                     ORDER BY parking_area_id
                     LIMIT %s OFFSET %s
-                    """
-            cursor.execute(query, (limit, offset))
+                    """,
+                    (limit, offset),
+                )
+                rows = cursor.fetchall()
+        finally:
+            self.pool.putconn(conn)
 
-        result : list[ParkingArea] = [] # Create a list to hold the results
-        for row in cursor: # Loops through each row of the table queried by the cursor and creates a ParkingArea object for each row and appends it to the result list
-            result.append(ParkingArea(
-                parking_area_id=row[0],
-                name=row[1],
-                capacity=row[2],
-                geom=row[3],
-                created_at=row[4]
-            ))
-        
-        cursor.close() # Close the cursor
-        self.pool.putconn(conn) # Return the connection to the pool
-        return result, len(result)
+        return {
+            "items": [
+                {
+                    "parking_area_id": row[0],
+                    "name": row[1],
+                    "capacity": row[2],
+                    "created_at": (
+                        format_timestamp(row[3]) if row[3] is not None else None
+                    ),
+                }
+                for row in rows
+            ],
+            "limit": limit,
+            "offset": offset,
+            "count": count,
+        }
+
+    def get_parking_areas(
+        self,
+        name: str | None,
+        bbox: list[float] | None,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        filters: list[str] = []
+        parameters: list[Any] = []
+
+        if name is not None:
+            filters.append("name = %s")
+            parameters.append(name)
+
+        if bbox is not None:
+            filters.append(
+                "ST_Intersects(geom, ST_MakeEnvelope(%s, %s, %s, %s, 4326))"
+            )
+            parameters.extend(bbox)
+
+        where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM parking_area {where_clause}",
+                    parameters,
+                )
+                count = cursor.fetchone()[0]
+                cursor.execute(
+                    f"""
+                    SELECT parking_area_id, name, capacity, created_at
+                    FROM parking_area
+                    {where_clause}
+                    ORDER BY parking_area_id
+                    LIMIT %s OFFSET %s
+                    """,
+                    [*parameters, limit, offset],
+                )
+                rows = cursor.fetchall()
+        finally:
+            self.pool.putconn(conn)
+
+        return {
+            "items": [
+                {
+                    "parking_area_id": row[0],
+                    "name": row[1],
+                    "capacity": row[2],
+                    "created_at": (
+                        format_timestamp(row[3]) if row[3] is not None else None
+                    ),
+                }
+                for row in rows
+            ],
+            "limit": limit,
+            "offset": offset,
+            "count": count,
+        }
     
     def get_parking_area_by_id(self, parking_area_id: int) -> ParkingArea | None:
         conn = self.pool.getconn() # Get a connection from the pool
