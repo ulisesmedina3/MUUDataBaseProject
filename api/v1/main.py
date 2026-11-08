@@ -187,6 +187,12 @@ async def update_parking_area(
 async def api_validation_error(
     request: Request, exc: RequestValidationError
 ):
+    if request.method == "POST" and request.url.path == "/api/v1/driver":
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Malformed JSON or invalid payload shape"},
+        )
+
     if request.url.path == "/api/v1/driver" or request.url.path.startswith(
         "/api/v1/driver/"
     ):
