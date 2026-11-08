@@ -63,10 +63,15 @@ def health_check():
 # 5.3 Parking Area
 # ==========================
 
-# Gets all of the parking areas in the database
+# Get a query of all parking areas or a filtered query
 @app.get("/api/v1/parking_areas")
-async def get_parking_areas():
-    return ParkingAreaHandler().get_all_parking_areas()
+async def get_parking_areas(name: str | None = None, bbox: list[int] | None = None, limit: int | None = None, offset: int | None = None):
+    if name is None and bbox is None and limit is None and offset is None:
+        return ParkingAreaHandler().get_all_parking_areas()
+    elif bbox is not None and len(bbox) != 4:
+        raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure that the bbox list contains exactly 4 values.")
+    else:
+        return ParkingAreaHandler().get_parking_areas(name, bbox, limit, offset)
 
 # Gets a specific parking area by its ID (ID must be a positive integer)
 @app.get("/api/v1/parking_areas/{parking_area_id}")
@@ -78,6 +83,7 @@ async def get_parking_area(parking_area_id: int):
         print("parking_area_id is valid")
         return ParkingAreaHandler().get_parking_area_by_id(parking_area_id)
 
+# Deletes a specific parking area by its ID (ID must be a positive integer)
 @app.delete("/api/v1/parking_areas/{parking_area_id}")
 async def delete_parking_area(parking_area_id: int):
     if parking_area_id < 1:
