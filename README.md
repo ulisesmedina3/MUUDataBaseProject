@@ -72,44 +72,7 @@ What this script does automatically:
 - Runs [sql/createtables.sql](sql/createtables.sql) (includes `CREATE EXTENSION IF NOT EXISTS postgis`)
 - Inserts parquet data in dependency order
 
-## Vehicle API
+## API v1
 
-Install the requirements and start the API locally from the project root:
-
-```bash
-.\.venv\Scripts\python.exe -m api.v1.main
-```
-
-The local FastAPI server listens on `http://localhost:5000`. Interactive API
-documentation is available at `http://localhost:5000/docs`. Configure `PGHOST`,
-`PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and optionally `PGSSLMODE`
-before starting it.
-
-For Render, set those database variables in the service's Environment tab,
-install from `requirements.txt`, and use this Start Command:
-
-```bash
-gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT api.v1.main:app
-```
-
-After deployment, opening the service URL (`/`) returns the API status.
-Use `/health` for a simple health check and `/api/v1/vehicles` for the
-vehicle endpoint. Do not append `localhost` to the Render URL.
-
-Create a vehicle with `POST /api/v1/vehicles`:
-
-```json
-{
-  "vehicle_type_id": 3,
-  "vehicle_status_id": 1,
-  "plate_number": "ABC-123",
-  "make": "Toyota",
-  "model": "Hilux",
-  "year": 2024
-}
-```
-
-The endpoint returns `201 Created` with the generated `vehicle_id`, `400 Bad
-Request` for malformed or invalid input, `404 Not Found` when a referenced
-vehicle type or status does not exist, and `409 Conflict` when the plate number
-already exists. `make` and `model` are optional text fields.
+The `api\v1` package provides the version 1 FastAPI interface for accessing the
+vehicle-tracking database through HTTP endpoints.
